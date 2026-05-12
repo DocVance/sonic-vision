@@ -86,6 +86,8 @@ export class LocomotionSystem {
         // Apply floor tracking after movement
         if (this.collisionSystem) {
             this.collisionSystem.snapToFloor(this.dolly, dt);
+            // Hard boundary safety net — prevent escaping the cave entirely
+            this.collisionSystem.clampToBounds(this.dolly);
         }
     }
 

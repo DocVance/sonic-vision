@@ -351,18 +351,19 @@ export class ObjectPlacer {
     //  CAVE PAINTING — Main Chamber wall
     // ============================================================
     placeCavePainting(scene, caveMaterials) {
-        const geo = new THREE.PlaneGeometry(6, 3);
-        const mesh = new THREE.Mesh(geo, caveMaterials.get('painting'));
-
-        // Place on the north wall of the main chamber, slightly inset
-        mesh.position.set(8, 4, -13.5);
-        mesh.rotation.y = -0.3;
-
         const echoMat = this.echoShaderSystem.createMaterial({
             colorTint: [0.9, 0.6, 0.2],
             ringSharpness: 0.7,
             decayMultiplier: 1.0
         });
+
+        const geo = new THREE.PlaneGeometry(6, 3);
+        const mesh = new THREE.Mesh(geo, echoMat); // Start with echo material
+
+        // Place on the north wall of the main chamber, slightly inset
+        mesh.position.set(8, 4, -13.5);
+        mesh.rotation.y = -0.3;
+
         mesh.userData.echoMaterial = echoMat;
         mesh.userData.realMaterial = caveMaterials.get('painting');
 

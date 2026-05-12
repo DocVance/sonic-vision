@@ -17,23 +17,37 @@ export class CollisionSystem {
         this.raycaster = new THREE.Raycaster();
 
         // --- tunables ---
-        this.wallCheckDistance = 0.55;   // How far ahead to check for walls (metres)
-        this.wallCheckHeight   = 0.9;   // Ray origin height above dolly base (chest level)
-        this.floorCheckHeight  = 10.0;  // How far above to start the floor ray
-        this.ceilingClearance  = 1.8;   // Min gap between floor and ceiling before blocking
-        this.playerHeight      = 1.6;   // Standing eye height above floor
-        this.floorSmoothSpeed  = 8.0;   // Lerp speed for Y tracking (higher = snappier)
+        this.wallCheckDistance = 0.8;    // How far ahead to check for walls (metres)
+        this.wallCheckHeight   = 0.9;    // Ray origin height above dolly base (chest level)
+        this.floorCheckHeight  = 10.0;   // How far above to start the floor ray
+        this.ceilingClearance  = 1.8;    // Min gap between floor and ceiling before blocking
+        this.playerHeight      = 1.6;    // Standing eye height above floor
+        this.floorSmoothSpeed  = 8.0;    // Lerp speed for Y tracking (higher = snappier)
 
-        // 8 cardinal + ordinal directions on XZ
+        // 16 directions on XZ for denser wall coverage
         this._wallDirs = [];
-        for (let a = 0; a < 8; a++) {
-            const angle = (a / 8) * Math.PI * 2;
+        for (let a = 0; a < 16; a++) {
+            const angle = (a / 16) * Math.PI * 2;
             this._wallDirs.push(new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle)));
         }
 
         this._tempVec = new THREE.Vector3();
         this._down = new THREE.Vector3(0, -1, 0);
         this._up   = new THREE.Vector3(0, 1, 0);
+
+        // Hard AABB safety bounds for each room + corridor.
+        // These prevent the player from ever escaping the cave.
+        // Each entry is { minX, maxX, minZ, maxZ } with 1m inset padding.
+        this.roomBounds = [
+            { minX: -14, maxX: 14, minZ: -14, maxZ: 14 },       // Main chamber
+            { minX: -7,  maxX: 7,  minZ: -32, maxZ: -14 },      // Crystal grotto
+            { minX: -12, maxX: 12, minZ: 10,  maxZ: 34 },       // Underground lake
+            { minX: -27, maxX: -13, minZ: -5, maxZ: 5 },        // Bat alcove
+            { minX: 14,  maxX: 25, minZ: -10, maxZ: 10 },       // Tunnel
+            { minX: -3,  maxX: 3,  minZ: -19, maxZ: -13 },      // Corridor: Main↔Crystal
+            { minX: -18, maxX: -13, minZ: -2.5, maxZ: 2.5 },    // Corridor: Main↔Bats
+            { minX: 12,  maxX: 21, minZ: -3,  maxZ: 3 },        // Corridor: Main↔Tunnel
+        ];
     }
 
     /**
@@ -171,5 +185,40 @@ export class CollisionSystem {
                 dolly.position.y = maxY;
             }
         }
+    }
+
+    /**
+     * Hard boundary clamp — safety net over raycaster collision.
+     * If the player has somehow escaped all room AABBs, push them
+     * back to the nearest valid room boundary.
+     */
+    clampToBounds(dolly) {
+        const x = dolly.position.x;
+        const z = dolly.position.z;
+
+        // Check if inside any valid room
+        for (const room of this.roomBounds) {
+            if (x >= room.minX && x <= room.maxX && z >= room.minZ && z <= room.maxZ) {
+                return; // Player is inside a valid area
+            }
+        }
+
+        // Player is outside all rooms — find nearest room and clamp
+        let bestDist = Infinity;
+        let bestRoom = this.roomBounds[0];
+
+        for (const room of this.roomBounds) {
+            // Distance from player to the nearest point inside this AABB
+            const clampedX = Math.max(room.minX, Math.min(room.maxX, x));
+            const clampedZ = Math.max(room.minZ, Math.min(room.maxZ, z));
+            const dist = (x - clampedX) ** 2 + (z - clampedZ) ** 2;
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestRoom = room;
+            }
+        }
+
+        dolly.position.x = Math.max(bestRoom.minX, Math.min(bestRoom.maxX, x));
+        dolly.position.z = Math.max(bestRoom.minZ, Math.min(bestRoom.maxZ, z));
     }
 }

@@ -100,6 +100,13 @@ function init() {
 
     echoTargets = caveBuilder.getEchoTargets();
 
+    // Ensure every echo target starts in echo mode (invisible until pinged)
+    echoTargets.forEach(target => {
+        if (target.userData && target.userData.echoMaterial) {
+            target.material = target.userData.echoMaterial;
+        }
+    });
+
     // Sprint B: Collect crystal/fungi light references from ObjectPlacer
     featureLights = objectPlacer.getFeatureLights();
 
