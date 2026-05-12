@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { echoTargets } from '../main.js';
 
 export class PingSystem {
-    constructor(camera, locomotionSystem, echoShaderSystem) {
+    constructor(camera, locomotionSystem, echoShaderSystem, echoTargets) {
         this.camera = camera;
         this.locomotion = locomotionSystem;
         this.echoShaderSystem = echoShaderSystem;
+        this.echoTargets = echoTargets;
         
         this.raycaster = new THREE.Raycaster();
         
@@ -175,7 +175,7 @@ export class PingSystem {
                 this.raycaster.set(cameraPos, dir);
                 this.raycaster.far = maxRange;
                 
-                const intersects = this.raycaster.intersectObjects(echoTargets, false);
+                const intersects = this.raycaster.intersectObjects(this.echoTargets, false);
                 
                 if (intersects.length > 0) {
                     const hit = intersects[0];

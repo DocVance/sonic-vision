@@ -104,14 +104,21 @@ export class EchoShaderSystem {
     }
     
     createMaterial(acousticProfile = {}) {
+        // Share the ping uniforms by reference so registerPing() updates
+        // propagate to every material automatically.
+        const uniforms = {
+            uTime: this.pingData.uTime,
+            uPingPositions: this.pingData.uPingPositions,
+            uPingDirections: this.pingData.uPingDirections,
+            uPingTimes: this.pingData.uPingTimes,
+            uPingParams: this.pingData.uPingParams,
+            uPingColors: this.pingData.uPingColors,
+            uBaseColor: { value: new THREE.Color(...(acousticProfile.colorTint || [0.0, 1.0, 0.9])) },
+            uRingSharpness: { value: acousticProfile.ringSharpness || 0.2 },
+        };
+
         return new THREE.ShaderMaterial({
-            uniforms: THREE.UniformsUtils.merge([
-                this.pingData,
-                {
-                    uBaseColor: { value: new THREE.Color(...(acousticProfile.colorTint || [0.0, 1.0, 0.9])) },
-                    uRingSharpness: { value: acousticProfile.ringSharpness || 0.2 },
-                }
-            ]),
+            uniforms,
             vertexShader: `
                 varying vec3 vWorldPosition;
                 varying vec3 vNormal;
@@ -191,6 +198,7 @@ export class EchoShaderSystem {
             transparent: true,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
+            side: THREE.DoubleSide,
             extensions: { derivatives: true }
         });
     }

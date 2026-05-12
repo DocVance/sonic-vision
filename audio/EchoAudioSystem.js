@@ -246,6 +246,12 @@ export class EchoAudioSystem {
                 this._scheduleDrip(panner, source.rate || 1.5);
             } else if (source.type === 'stream') {
                 this._startStream(panner, source.intensity || 0.4);
+            } else if (source.type === 'waterfall') {
+                this._startWaterfall(panner, source.intensity || 0.7);
+            } else if (source.type === 'bats') {
+                this._scheduleBatChitter(panner, source.rate || 3.0);
+            } else if (source.type === 'wind') {
+                this._startWind(panner, source.intensity || 0.3);
             }
             
             this.ambientNodes.push(panner);
@@ -347,6 +353,93 @@ export class EchoAudioSystem {
         src.connect(bpf);
         bpf.connect(bpf2);
         bpf2.connect(gain);
+        gain.connect(panner);
+        src.start();
+    }
+
+    /**
+     * Loud broadband cascade — waterfall roar.
+     */
+    _startWaterfall(panner, intensity) {
+        const sampleRate = this.context.sampleRate;
+        const bufLen = Math.ceil(sampleRate * 4.0);
+        const buf = this.context.createBuffer(1, bufLen, sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < bufLen; i++) d[i] = Math.random() * 2 - 1;
+
+        const src = this.context.createBufferSource();
+        src.buffer = buf;
+        src.loop = true;
+
+        const lpf = this.context.createBiquadFilter();
+        lpf.type = 'lowpass';
+        lpf.frequency.value = 2500;
+
+        const hpf = this.context.createBiquadFilter();
+        hpf.type = 'highpass';
+        hpf.frequency.value = 200;
+
+        const gain = this.context.createGain();
+        gain.gain.value = intensity * 0.5;
+
+        src.connect(lpf);
+        lpf.connect(hpf);
+        hpf.connect(gain);
+        gain.connect(panner);
+        src.start();
+    }
+
+    /**
+     * Intermittent high-pitched bat squeaks.
+     */
+    _scheduleBatChitter(panner, avgInterval) {
+        const play = () => {
+            if (!this.contextStarted) return;
+            const now = this.context.currentTime;
+
+            // Short high-frequency squeak
+            const osc = this.context.createOscillator();
+            const env = this.context.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(8000 + Math.random() * 6000, now);
+            osc.frequency.exponentialRampToValueAtTime(4000, now + 0.03);
+            env.gain.setValueAtTime(0, now);
+            env.gain.linearRampToValueAtTime(0.15, now + 0.005);
+            env.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+            osc.connect(env);
+            env.connect(panner);
+            osc.start(now);
+            osc.stop(now + 0.04);
+
+            const jitter = (Math.random() - 0.3) * avgInterval;
+            setTimeout(play, Math.max(0.5, avgInterval + jitter) * 1000);
+        };
+        setTimeout(play, Math.random() * avgInterval * 1000);
+    }
+
+    /**
+     * Low rumbling wind through a tunnel.
+     */
+    _startWind(panner, intensity) {
+        const sampleRate = this.context.sampleRate;
+        const bufLen = Math.ceil(sampleRate * 5.0);
+        const buf = this.context.createBuffer(1, bufLen, sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < bufLen; i++) d[i] = Math.random() * 2 - 1;
+
+        const src = this.context.createBufferSource();
+        src.buffer = buf;
+        src.loop = true;
+
+        const lpf = this.context.createBiquadFilter();
+        lpf.type = 'lowpass';
+        lpf.frequency.value = 300;
+
+        const gain = this.context.createGain();
+        gain.gain.value = intensity * 0.25;
+
+        src.connect(lpf);
+        lpf.connect(gain);
         gain.connect(panner);
         src.start();
     }
