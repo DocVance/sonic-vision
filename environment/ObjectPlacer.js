@@ -29,44 +29,54 @@ export class ObjectPlacer {
     // ============================================================
     placeStalactites(scene, caveMaterials) {
         const echoMat = this.echoShaderSystem.createMaterial({
-            colorTint: [0.0, 1.0, 1.0],
-            ringSharpness: 0.1,
-            decayMultiplier: 0.8
+            colorTint: [0.0, 1.0, 1.0], ringSharpness: 0.15, decayMultiplier: 0.8
         });
-
         const geometries = [];
-        const positions = [
-            // Main chamber
-            [-7, -5], [3, -9], [-4, -14], [8, -7], [-11, -10],
-            [5, -3], [-9, 2], [2, 8], [-5, 6], [9, 4],
-            [-13, -2], [6, 12], [-3, -8], [10, -12], [-8, 10],
-            // Crystal grotto ceiling formations
-            [1, -22], [-3, -27], [4, -24], [-5, -23], [2, -28],
+
+        // Stalactites (ceiling) and stalagmites (floor) — 6-sided cones for clean facets
+        const spikes = [
+            // [x, z, fromCeiling, height, radius]
+            [-7, -5,  1, 2.8, 0.30],  [3, -9,   1, 3.5, 0.45],  [-4,-14, 1, 2.2, 0.28],
+            [ 8, -7,  1, 3.0, 0.38],  [-11,-10, 1, 4.0, 0.52],  [5, -3,  1, 2.5, 0.32],
+            [-9,  2,  1, 3.2, 0.40],  [ 2,  8,  1, 2.0, 0.25],  [-5, 6,  1, 3.8, 0.48],
+            [ 9,  4,  1, 2.7, 0.35],  [-13,-2,  1, 4.5, 0.55],
+            // Stalagmites (floor-up)
+            [-6,-12,  0, 1.8, 0.22],  [5, -8,   0, 2.4, 0.30],  [10,-11, 0, 1.5, 0.18],
+            [-3,  9,  0, 2.0, 0.26],  [7,  6,   0, 1.6, 0.20],
+            // Crystal grotto formations
+            [1,-22,   1, 3.0, 0.35],  [-3,-27,  1, 4.2, 0.50],  [4,-24, 1, 2.5, 0.30],
+            [-5,-23,  1, 3.5, 0.42],  [2,-28,   0, 2.8, 0.34],
         ];
 
-        positions.forEach(([x, z], idx) => {
-            const fromCeiling = idx % 2 === 0;
-            const height = 2.0 + (idx * 0.37) % 3.5;
-            const radius = 0.35 + (idx * 0.17) % 1.2;
-
-            const geo = new THREE.CylinderGeometry(
-                fromCeiling ? radius : 0.05,
-                fromCeiling ? 0.05 : radius,
-                height, 8, 3
-            );
-            this._applyNoise(geo, radius * 0.18);
-
-            if (fromCeiling) {
-                geo.translate(x, 10 - (height / 2) + 0.8, z);
+        spikes.forEach(([x, z, ceil, h, r]) => {
+            const geo = new THREE.ConeGeometry(ceil ? 0.03 : r, h, 6, 1); // 6-sided = clear flat faces
+            if (ceil) {
+                geo.scale(1, 1, 1);
+                geo.translate(x, 10 - h * 0.5, z); // hang from ceiling at y≈10
             } else {
-                geo.translate(x, (height / 2) - 0.5, z);
+                geo.rotateX(Math.PI); // point up
+                geo.translate(x, h * 0.5 - 0.2, z);
             }
+            // Very light jitter — preserves flat faces
+            const pos = geo.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                pos.setX(i, pos.getX(i) + (Math.random() - 0.5) * 0.04);
+                pos.setZ(i, pos.getZ(i) + (Math.random() - 0.5) * 0.04);
+            }
+            pos.needsUpdate = true;
             geometries.push(geo);
         });
 
+        // Stalactite curtain in crystal grotto — uniform row of cones
+        for (let i = 0; i < 8; i++) {
+            const h = 1.5 + (i % 3) * 0.8;
+            const geo = new THREE.ConeGeometry(0.08, h, 6, 1);
+            geo.translate(-3 + i * 1.0, 7.5 - h * 0.5, -21);
+            geometries.push(geo);
+        }
+
         const merged = BufferGeometryUtils.mergeGeometries(geometries);
         merged.computeVertexNormals();
-
         const mesh = new THREE.Mesh(merged, echoMat);
         mesh.userData.echoMaterial = echoMat;
         mesh.userData.realMaterial = caveMaterials.get('stalactite');
@@ -80,41 +90,46 @@ export class ObjectPlacer {
     // ============================================================
     placeBoulders(scene, caveMaterials) {
         const echoMat = this.echoShaderSystem.createMaterial({
-            colorTint: [0.2, 0.8, 0.4],
-            ringSharpness: 0.3,
-            decayMultiplier: 1.0
+            colorTint: [0.2, 0.8, 0.4], ringSharpness: 0.3, decayMultiplier: 1.0
         });
-
         const geometries = [];
         const configs = [
-            // Main chamber
-            { x: -9,  z: -6,  r: 1.8 },
-            { x:  7,  z: -4,  r: 1.2 },
-            { x: -13, z: 5,   r: 2.2 },
-            { x:  11, z: 8,   r: 1.5 },
-            { x: -5,  z: 12,  r: 1.0 },
-            { x:  4,  z: -14, r: 1.7 },
-            { x: -10, z: -13, r: 1.3 },
-            { x:  13, z: -9,  r: 2.0 },
-            // Lake entrance area
-            { x: -4,  z: 16,  r: 1.1 },
-            { x:  6,  z: 18,  r: 0.9 },
-            { x:  0,  z: 15,  r: 1.4 },
-            // Bat alcove entrance
-            { x: -16, z: -1,  r: 0.8 },
+            { x: -9,  z: -6,  r: 1.8 }, { x:  7,  z: -4,  r: 1.2 },
+            { x: -13, z: 5,   r: 2.2 }, { x: 11,  z: 8,   r: 1.5 },
+            { x: -5,  z: 12,  r: 1.0 }, { x:  4,  z: -14, r: 1.7 },
+            { x: -10, z: -13, r: 1.3 }, { x: 13,  z: -9,  r: 2.0 },
+            { x: -4,  z: 16,  r: 1.1 }, { x:  6,  z: 18,  r: 0.9 },
+            { x:  0,  z: 15,  r: 1.4 }, { x: -16, z: -1,  r: 0.8 },
             { x: -17, z: 1,   r: 1.0 },
         ];
-
         configs.forEach(({ x, z, r }) => {
-            const geo = new THREE.IcosahedronGeometry(r, 2);
-            this._applyNoise(geo, r * 0.22);
-            geo.translate(x, r * 0.6 - r * 0.4, z);
+            // DodecahedronGeometry(0) = 12 flat pentagonal faces — clean low-poly chunk
+            const geo = new THREE.DodecahedronGeometry(r, 0);
+            // Very light positional jitter — keeps flat faces, just breaks uniformity
+            const pos = geo.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                pos.setX(i, pos.getX(i) + (Math.random()-0.5)*r*0.12);
+                pos.setY(i, pos.getY(i) + (Math.random()-0.5)*r*0.12);
+                pos.setZ(i, pos.getZ(i) + (Math.random()-0.5)*r*0.12);
+            }
+            pos.needsUpdate = true;
+            geo.translate(x, r * 0.55, z);
             geometries.push(geo);
+        });
+
+        // Rock ledge shelves on main chamber walls — flat BoxGeometry slabs
+        [
+            { x:-14, y:3.5, z:-4,  w:0.4, h:0.5, d:6 },
+            { x: 14, y:5.0, z: 3,  w:0.4, h:0.5, d:4 },
+            { x: -4, y:2.5, z:-14, w:5,   h:0.5, d:0.4 },
+        ].forEach(({ x, y, z, w, h, d }) => {
+            const g = new THREE.BoxGeometry(w, h, d);
+            g.translate(x, y, z);
+            geometries.push(g);
         });
 
         const merged = BufferGeometryUtils.mergeGeometries(geometries);
         merged.computeVertexNormals();
-
         const mesh = new THREE.Mesh(merged, echoMat);
         mesh.userData.echoMaterial = echoMat;
         mesh.userData.realMaterial = caveMaterials.get('cave');
@@ -128,28 +143,31 @@ export class ObjectPlacer {
     // ============================================================
     placeArchway(scene, caveMaterials) {
         const echoMat = this.echoShaderSystem.createMaterial({
-            colorTint: [0.9, 0.2, 0.5],
-            ringSharpness: 0.2,
-            decayMultiplier: 1.2
+            colorTint: [0.9, 0.2, 0.5], ringSharpness: 0.25, decayMultiplier: 1.2
         });
-
         const geometries = [];
-        const archGeo = new THREE.TorusGeometry(3, 1.2, 16, 40, Math.PI);
-        this._applyNoise(archGeo, 0.15);
-        archGeo.rotateX(-Math.PI / 2);
-        archGeo.translate(15, 3, 0);
-        geometries.push(archGeo);
 
+        // Lintel — flat box across the top (clean horizontal line in sonar)
+        const lintel = new THREE.BoxGeometry(8, 1.0, 1.2);
+        lintel.translate(15, 5.8, 0);
+        geometries.push(lintel);
+
+        // Two hexagonal pillars (6-segment cylinders = clear flat faces)
         for (const side of [-1, 1]) {
-            const pillarGeo = new THREE.CylinderGeometry(1.1, 1.3, 3.5, 8, 2);
-            this._applyNoise(pillarGeo, 0.12);
-            pillarGeo.translate(15 + side * 3, 3.5 / 2 - 0.3, 0);
-            geometries.push(pillarGeo);
+            const pillar = new THREE.CylinderGeometry(0.8, 1.0, 6, 6, 1);
+            pillar.translate(15 + side * 3.5, 3.0, 0);
+            geometries.push(pillar);
+        }
+
+        // Corbel blocks under lintel corners
+        for (const side of [-1, 1]) {
+            const corbel = new THREE.BoxGeometry(1.2, 0.5, 1.4);
+            corbel.translate(15 + side * 3.5, 5.2, 0);
+            geometries.push(corbel);
         }
 
         const merged = BufferGeometryUtils.mergeGeometries(geometries);
         merged.computeVertexNormals();
-
         const mesh = new THREE.Mesh(merged, echoMat);
         mesh.userData.echoMaterial = echoMat;
         mesh.userData.realMaterial = caveMaterials.get('archway');
@@ -494,32 +512,34 @@ export class ObjectPlacer {
     // ============================================================
     placeRubbleField(scene, caveMaterials) {
         const echoMat = this.echoShaderSystem.createMaterial({
-            colorTint: [0.5, 0.5, 0.4],
-            ringSharpness: 0.35,
-            decayMultiplier: 1.1
+            colorTint: [0.5, 0.5, 0.4], ringSharpness: 0.35, decayMultiplier: 1.1
         });
-
         const geometries = [];
 
-        for (let i = 0; i < 20; i++) {
-            const r = 0.15 + Math.random() * 0.3;
-            const geo = new THREE.IcosahedronGeometry(r, 1);
-            this._applyNoise(geo, r * 0.3);
-
-            const x = -6 + Math.random() * 12;
-            const z = 14 + Math.random() * 4;
-            geo.translate(x, r * 0.4, z);
-
+        // Low-poly rubble: OctahedronGeometry(0) = 8 flat triangular faces
+        const rubbleSeeds = [
+            [-5,14,0.25],[-3,15,0.30],[0,14.5,0.20],[2,15,0.28],[4,14,0.22],
+            [-4,16,0.18],[1,16,0.32],[-2,17,0.24],[3,17,0.19],[-1,15.5,0.26],
+            [5,15,0.21],[6,14,0.29],[-6,15,0.27],[2,14,0.23],[-3,16.5,0.31],
+        ];
+        rubbleSeeds.forEach(([x,z,r]) => {
+            const geo = new THREE.OctahedronGeometry(r, 0); // 0 detail = pure 8-face
+            geo.rotateY(Math.random() * Math.PI);
+            geo.rotateX((Math.random()-0.5) * 0.6);
+            geo.translate(x, r*0.5, z);
             geometries.push(geo);
-        }
+        });
+
+        // Bone-dry shallow pool — flat hexagonal disk at lake room
+        const poolGeo = new THREE.CylinderGeometry(4.5, 4.5, 0.15, 8, 1);
+        poolGeo.translate(0, -1.0, 22);
+        geometries.push(poolGeo);
 
         const merged = BufferGeometryUtils.mergeGeometries(geometries);
         merged.computeVertexNormals();
-
         const mesh = new THREE.Mesh(merged, echoMat);
         mesh.userData.echoMaterial = echoMat;
         mesh.userData.realMaterial = caveMaterials.get('cave');
-
         scene.add(mesh);
         this.caveBuilder.echoTargets.push(mesh);
         this.caveBuilder.colliders.push(mesh);

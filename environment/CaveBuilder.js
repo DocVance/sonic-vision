@@ -28,11 +28,11 @@ export class CaveBuilder {
         // Passages are carved by pushing vertices outward in shared-wall regions.
 
         const rooms = [
-            this._buildRoom('main',    30, 11, 30, 0,    0,  0,    24, caveMaterials),
-            this._buildRoom('crystal', 16, 8,  16, 0,    0, -25,   20, caveMaterials),
-            this._buildRoom('lake',    26, 7,  26, 0,   -1.5, 22,  20, caveMaterials),
-            this._buildRoom('bats',    12, 13, 12, -22,  0,  0,    16, caveMaterials),
-            this._buildRoom('tunnel',  8,  7,  22, 22,   0,  0,    16, caveMaterials),
+            this._buildRoom('main',    30, 11, 30, 0,    0,  0,    8, caveMaterials),
+            this._buildRoom('crystal', 16, 8,  16, 0,    0, -25,   8, caveMaterials),
+            this._buildRoom('lake',    26, 7,  26, 0,   -1.5, 22,  8, caveMaterials),
+            this._buildRoom('bats',    12, 13, 12, -22,  0,  0,    8, caveMaterials),
+            this._buildRoom('tunnel',  8,  7,  22, 22,   0,  0,    6, caveMaterials),
         ];
 
         rooms.forEach(room => {
@@ -276,7 +276,7 @@ export class CaveBuilder {
         geometry.boundingBox.getCenter(center);
         const vertex = new THREE.Vector3();
 
-        const noiseMag = roomName === 'tunnel' ? 0.6 : 1.2;
+        const noiseMag = roomName === 'tunnel' ? 0.3 : 0.7;
 
         for (let i = 0; i < posAttr.count; i++) {
             vertex.fromBufferAttribute(posAttr, i);
