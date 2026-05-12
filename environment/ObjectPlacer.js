@@ -22,6 +22,7 @@ export class ObjectPlacer {
         this.placeFlowstone(scene, caveMaterials);
         this.placeMineralVeins(scene, caveMaterials);
         this.placeRubbleField(scene, caveMaterials);
+        this.placeEnhancements(scene, caveMaterials);
     }
 
     // ============================================================
@@ -574,6 +575,189 @@ export class ObjectPlacer {
             posAttr.setXYZ(i, vertex.x, vertex.y, vertex.z);
         }
         posAttr.needsUpdate = true;
+    }
+
+    // ============================================================
+    //  LOW-POLY ENHANCEMENTS
+    // ============================================================
+    placeEnhancements(scene, mats) {
+        this._eCols(scene, mats);
+        this._eTunnelRibs(scene, mats);
+        this._eCrystalShelf(scene, mats);
+        this._eTideMarks(scene, mats);
+        this._eMushrooms(scene, mats);
+        this._eChandelier(scene, mats);
+        this._eArtifacts(scene, mats);
+    }
+
+    // helper: build mesh from geometries array (all toNonIndexed), add to scene
+    _lp(scene, geos, echoMat, realMat, collider = false) {
+        const toMerge = geos.map(g => g.index ? g.toNonIndexed() : g);
+        const merged = BufferGeometryUtils.mergeGeometries(toMerge);
+        if (!merged) return;
+        merged.computeVertexNormals();
+        const mesh = new THREE.Mesh(merged, echoMat);
+        mesh.userData.echoMaterial = echoMat;
+        mesh.userData.realMaterial = realMat;
+        scene.add(mesh);
+        this.caveBuilder.echoTargets.push(mesh);
+        if (collider) this.caveBuilder.colliders.push(mesh);
+        return mesh;
+    }
+
+    // Hexagonal cave columns where stalactite meets stalagmite (main chamber)
+    _eCols(scene, mats) {
+        const echo = this.echoShaderSystem.createMaterial({ colorTint:[0.8,0.6,0.2], ringSharpness:0.35, decayMultiplier:1.3 });
+        const geos = [];
+        [{ x:-4, z:-2, h:6.5 }, { x:8, z:3, h:5.5 }, { x:-7, z:7, h:7.0 }].forEach(({x,z,h}) => {
+            // Shaft: tapered hexagonal prism
+            const shaft = new THREE.CylinderGeometry(0.22, 0.32, h, 6, 1).toNonIndexed();
+            shaft.translate(x, h*0.5, z);
+            geos.push(shaft);
+            // Capital: flat hexagonal cap at top
+            const cap = new THREE.CylinderGeometry(0.38, 0.38, 0.22, 6, 1).toNonIndexed();
+            cap.translate(x, h + 0.11, z);
+            geos.push(cap);
+            // Base: wider flat disk
+            const base = new THREE.CylinderGeometry(0.42, 0.42, 0.18, 6, 1).toNonIndexed();
+            base.translate(x, 0.09, z);
+            geos.push(base);
+        });
+        this._lp(scene, geos, echo, mats.get('cave'), true);
+    }
+
+    // Tunnel ceiling ribs + wall tabs (tunnel room cx=22, runs N-S along Z=-11 to 11)
+    _eTunnelRibs(scene, mats) {
+        const echo = this.echoShaderSystem.createMaterial({ colorTint:[0.9,0.2,0.5], ringSharpness:0.3, decayMultiplier:1.1 });
+        const geos = [];
+        // Ceiling ribs spanning X at Z intervals — clean horizontal echo bands
+        [-8,-4,0,4,8].forEach(z => {
+            const g = new THREE.BoxGeometry(7.5, 0.35, 0.35).toNonIndexed();
+            g.translate(22, 6.5, z); geos.push(g);
+        });
+        // West-wall tabs (x≈19) — vertical slabs, clear rectangular surfaces
+        [-6,-2,2,6].forEach(z => {
+            const g = new THREE.BoxGeometry(0.35, 4.5, 0.35).toNonIndexed();
+            g.translate(19, 3.0, z); geos.push(g);
+        });
+        // East-wall tabs (x≈25)
+        [-6,-2,2,6].forEach(z => {
+            const g = new THREE.BoxGeometry(0.35, 4.5, 0.35).toNonIndexed();
+            g.translate(25, 3.0, z); geos.push(g);
+        });
+        this._lp(scene, geos, echo, mats.get('cave'));
+    }
+
+    // Crystal shelf: flat slab + spike cluster on top (crystal grotto z=-24)
+    _eCrystalShelf(scene, mats) {
+        const echo = this.echoShaderSystem.createMaterial({ colorTint:[0.4,0.8,1.0], ringSharpness:0.05, decayMultiplier:0.6 });
+        const geos = [];
+        // Shelf slab
+        const shelf = new THREE.BoxGeometry(4, 0.45, 2).toNonIndexed();
+        shelf.translate(0, 1.5, -24); geos.push(shelf);
+        // Two support legs
+        [[-1.5,-24],[1.5,-24]].forEach(([lx,lz]) => {
+            const leg = new THREE.BoxGeometry(0.2, 1.5, 0.2).toNonIndexed();
+            leg.translate(lx, 0.75, lz); geos.push(leg);
+        });
+        // Crystal spikes on surface — OctahedronGeometry (non-indexed, compatible)
+        [[-1,-23.5,1.6],[0.4,-24.5,1.2],[1.2,-23.9,0.9],[-0.3,-24.2,1.4],[0.8,-23.7,1.1]]
+            .forEach(([sx,sz,sh]) => {
+                const g = new THREE.OctahedronGeometry(0.12, 0);
+                g.scale(1, sh * 4, 1);
+                g.translate(sx, 2.0 + sh * 0.5, sz);
+                geos.push(g);
+            });
+        this._lp(scene, geos, echo, mats.get('crystal'));
+    }
+
+    // Ancient tide-mark shelves on lake room walls (lake cx=0, cz=22, w=26, d=26)
+    _eTideMarks(scene, mats) {
+        const echo = this.echoShaderSystem.createMaterial({ colorTint:[0.2,0.9,0.6], ringSharpness:0.5, decayMultiplier:1.0 });
+        const geos = [];
+        [0.5, 1.8].forEach(yOff => {
+            const y = -1.5 + yOff; // lake floor at cy=-1.5
+            // North inner wall
+            const gN = new THREE.BoxGeometry(24, 0.1, 0.22).toNonIndexed(); gN.translate(0, y, 11); geos.push(gN);
+            // South inner wall
+            const gS = new THREE.BoxGeometry(24, 0.1, 0.22).toNonIndexed(); gS.translate(0, y, 33); geos.push(gS);
+            // East inner wall
+            const gE = new THREE.BoxGeometry(0.22, 0.1, 22).toNonIndexed(); gE.translate(12, y, 22); geos.push(gE);
+            // West inner wall
+            const gW = new THREE.BoxGeometry(0.22, 0.1, 22).toNonIndexed(); gW.translate(-12, y, 22); geos.push(gW);
+        });
+        this._lp(scene, geos, echo, mats.get('cave'));
+    }
+
+    // Geometric mushrooms in bat alcove — 6-face cap + 6-face stem
+    _eMushrooms(scene, mats) {
+        const echo = this.echoShaderSystem.createMaterial({ colorTint:[0.0,1.0,0.5], ringSharpness:0.2, decayMultiplier:0.8 });
+        const geos = [];
+        [
+            { x:-20, z:-3, r:0.38, capH:0.55, stemH:0.65 },
+            { x:-23, z: 2, r:0.58, capH:0.72, stemH:0.95 },
+            { x:-21, z: 3, r:0.29, capH:0.44, stemH:0.50 },
+            { x:-24, z:-1, r:0.42, capH:0.62, stemH:0.78 },
+            { x:-19, z: 1, r:0.23, capH:0.34, stemH:0.42 },
+        ].forEach(({ x, z, r, capH, stemH }) => {
+            const stem = new THREE.CylinderGeometry(r*0.34, r*0.40, stemH, 6, 1).toNonIndexed();
+            stem.translate(x, stemH*0.5, z); geos.push(stem);
+            const cap = new THREE.ConeGeometry(r, capH, 6, 1).toNonIndexed();
+            cap.translate(x, stemH + capH*0.5, z); geos.push(cap);
+            // Flat rim under cap
+            const rim = new THREE.CylinderGeometry(r*1.1, r*0.9, 0.06, 6, 1).toNonIndexed();
+            rim.translate(x, stemH + 0.03, z); geos.push(rim);
+        });
+        this._lp(scene, geos, echo, mats.get('fungi'));
+    }
+
+    // Central stalactite chandelier — 1 large + 6-ring in main chamber ceiling
+    _eChandelier(scene, mats) {
+        const echo = this.echoShaderSystem.createMaterial({ colorTint:[0.0,1.0,1.0], ringSharpness:0.18, decayMultiplier:0.9 });
+        const geos = [];
+        // Central dominant spike
+        const centre = new THREE.ConeGeometry(0.42, 5.2, 6, 1).toNonIndexed();
+        centre.translate(0, 10 - 2.6, 0); geos.push(centre);
+        // Ring of 6 alternating short/tall spikes
+        for (let i = 0; i < 6; i++) {
+            const ang = (i / 6) * Math.PI * 2;
+            const h = 1.8 + (i % 2) * 1.6;
+            const g = new THREE.ConeGeometry(0.14, h, 6, 1).toNonIndexed();
+            g.translate(Math.cos(ang)*1.9, 10 - h*0.5, Math.sin(ang)*1.9); geos.push(g);
+        }
+        // Outer ring of 6 thin drips
+        for (let i = 0; i < 6; i++) {
+            const ang = ((i + 0.5) / 6) * Math.PI * 2;
+            const h = 0.9 + (i % 3) * 0.5;
+            const g = new THREE.ConeGeometry(0.07, h, 6, 1).toNonIndexed();
+            g.translate(Math.cos(ang)*3.0, 10 - h*0.5, Math.sin(ang)*3.0); geos.push(g);
+        }
+        this._lp(scene, geos, echo, mats.get('stalactite'));
+    }
+
+    // Abstract artifacts: crossed bones + stone tool + skull (main chamber floor)
+    _eArtifacts(scene, mats) {
+        const echo = this.echoShaderSystem.createMaterial({ colorTint:[0.9,0.6,0.2], ringSharpness:0.4, decayMultiplier:1.0 });
+        const geos = [];
+        // Crossed cylinders (bones)
+        const b1 = new THREE.CylinderGeometry(0.055, 0.055, 1.8, 6, 1).toNonIndexed();
+        b1.rotateZ(Math.PI * 0.25); b1.translate(-3, 0.45, 10); geos.push(b1);
+        const b2 = new THREE.CylinderGeometry(0.055, 0.055, 1.8, 6, 1).toNonIndexed();
+        b2.rotateZ(-Math.PI * 0.25); b2.translate(-3, 0.45, 10); geos.push(b2);
+        // Triangular prism "flint tool"
+        const tool = new THREE.CylinderGeometry(0, 0.28, 0.55, 3, 1).toNonIndexed();
+        tool.rotateX(Math.PI * 0.5); tool.translate(-2.5, 0.18, 11); geos.push(tool);
+        // Low-poly "skull": cranium box + jaw box
+        const cranium = new THREE.BoxGeometry(0.52, 0.44, 0.46).toNonIndexed();
+        cranium.translate(5, 0.52, -3); geos.push(cranium);
+        const jaw = new THREE.BoxGeometry(0.50, 0.18, 0.30).toNonIndexed();
+        jaw.translate(5, 0.20, -3.1); geos.push(jaw);
+        // Teeth (tiny boxes)
+        [-0.12, 0, 0.12].forEach(tx => {
+            const tooth = new THREE.BoxGeometry(0.08, 0.12, 0.06).toNonIndexed();
+            tooth.translate(5 + tx, 0.10, -2.96); geos.push(tooth);
+        });
+        this._lp(scene, geos, echo, mats.get('cave'));
     }
 
     // --- Sprint B: Public getters ---
