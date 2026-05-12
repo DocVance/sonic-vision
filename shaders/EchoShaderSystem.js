@@ -139,14 +139,14 @@ export class EchoShaderSystem {
                     vAge = uTime - creationTime;
                     float dist = distance(position, uPlayerPosition);
                     
-                    // Lines fade in quickly then persist as faint grid
+                    // Lines fade in quickly then persist as bright grid for 8s, then slow decay
                     float fadeIn = smoothstep(0.0, 0.3, vAge);
-                    float fadeOut = vAge < 5.0 
+                    float fadeOut = vAge < 8.0 
                         ? 1.0 
-                        : clamp(1.0 - (vAge - 5.0) / 40.0, 0.0, 1.0);
-                    float distFade = clamp(1.0 - (dist / 35.0), 0.05, 1.0);
+                        : clamp(1.0 - (vAge - 8.0) / 37.0, 0.0, 1.0);
+                    float distFade = clamp(1.0 - (dist / 40.0), 0.05, 1.0);
                     
-                    vAlpha = fadeIn * fadeOut * distFade * 0.35;
+                    vAlpha = fadeIn * fadeOut * distFade * 0.55;
                     
                     if (vAge < 0.0 || vAge > 45.0) vAlpha = 0.0;
                     
@@ -344,8 +344,8 @@ export class EchoShaderSystem {
         const lineColor = this.gridGeometry.attributes.color;
         
         let connectionsForThisHit = 0;
-        const MAX_CONN = 2;                // 2 connections max keeps lines clean
-        const MAX_DIST = 1.6;              // tighter radius reduces long diagonal leaps
+        const MAX_CONN = 3;                // 3 connections for richer line coverage
+        const MAX_DIST = 3.0;              // 3m range — spans across full building facades
 
         for (let j = this._recentHits.length - 1; j >= 0 && connectionsForThisHit < MAX_CONN; j--) {
             const other = this._recentHits[j];
@@ -354,9 +354,9 @@ export class EchoShaderSystem {
             const normalDot = nx * other.nx + ny * other.ny + nz * other.nz;
             if (normalDot < 0.85) continue;
 
-            // 2. Same height band for wall hits (avoids vertical diagonals across floors)
+            // 2. Same height band for wall hits (avoids vertical diagonals across floor levels)
             const dy = Math.abs(newHit.y - other.y);
-            if (!newHit.isFloor && dy > 0.28) continue; // Wall hits: stay within 28cm band
+            if (!newHit.isFloor && dy > 0.5) continue; // Wall hits: same floor-height band
 
             // 3. Horizontal distance check
             const dx = newHit.x - other.x;
@@ -370,8 +370,8 @@ export class EchoShaderSystem {
             linePos.setXYZ(v0, newHit.x, newHit.y, newHit.z);
             linePos.setXYZ(v1, other.x,  other.y,  other.z);
             lineTime.setX(v0, now); lineTime.setX(v1, now);
-            // Walls: 40% of dot color — subtle; floors: 30%
-            const blend = newHit.isFloor ? 0.3 : 0.4;
+            // Walls: 65% brightness; floors: 50%
+            const blend = newHit.isFloor ? 0.50 : 0.65;
             lineColor.setXYZ(v0, r*blend, g*blend, b*blend);
             lineColor.setXYZ(v1, r*blend, g*blend, b*blend);
 

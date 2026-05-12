@@ -17,12 +17,12 @@ export class CollisionSystem {
         this.raycaster = new THREE.Raycaster();
 
         // --- tunables ---
-        this.wallCheckDistance = 0.8;    // How far ahead to check for walls (metres)
-        this.wallCheckHeight   = 0.9;    // Ray origin height above dolly base (chest level)
-        this.floorCheckHeight  = 10.0;   // How far above to start the floor ray
-        this.ceilingClearance  = 1.8;    // Min gap between floor and ceiling before blocking
-        this.playerHeight      = 1.6;    // Standing eye height above floor
-        this.floorSmoothSpeed  = 8.0;    // Lerp speed for Y tracking (higher = snappier)
+        this.wallCheckDistance = 0.8;
+        this.wallCheckHeight   = 0.9;
+        this.floorCheckHeight  = 1.5;    // Start floor ray 1.5m above dolly (not 10m — avoids hitting building roofs)
+        this.ceilingClearance  = 1.8;
+        this.playerHeight      = 1.6;
+        this.floorSmoothSpeed  = 12.0;   // Snappier for city flat ground
 
         // 16 directions on XZ for denser wall coverage
         this._wallDirs = [];
@@ -145,7 +145,7 @@ export class CollisionSystem {
         );
 
         this.raycaster.set(origin, this._down);
-        this.raycaster.far = this.floorCheckHeight + 5;
+        this.raycaster.far = this.floorCheckHeight + 2; // 3.5m total — can't accidentally hit rooftops
         const hits = this.raycaster.intersectObjects(this.colliders, false);
 
         if (hits.length > 0) {
