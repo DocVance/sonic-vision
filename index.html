@@ -5,32 +5,118 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bat Vision</title>
     <style>
-      body {
-        margin: 0;
-        overflow: hidden;
-        background-color: #000;
-        font-family: sans-serif;
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700&display=swap');
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { overflow: hidden; background: #000; font-family: 'Inter', sans-serif; }
+      canvas { display: block; }
+
+      /* ── Scene Selector ───────────────────────────────── */
+      #scene-selector {
+        position: fixed; inset: 0; z-index: 100;
+        display: flex; align-items: center; justify-content: center;
+        background: radial-gradient(ellipse at center, #0a1428 0%, #000408 100%);
+        transition: opacity 0.8s ease;
       }
-      canvas {
-        display: block;
+      #scene-selector.fade-out { opacity: 0; pointer-events: none; }
+
+      .sel-inner { text-align: center; }
+
+      .sel-title { margin-bottom: 48px; }
+      .sel-title h1 {
+        font-size: 3.2rem; font-weight: 700; letter-spacing: 0.18em;
+        background: linear-gradient(135deg, #00eeff, #0080ff);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        text-shadow: none;
       }
+      .sel-title p {
+        margin-top: 10px; font-size: 1rem; font-weight: 300;
+        color: rgba(160,220,255,0.65); letter-spacing: 0.06em;
+      }
+
+      .scene-cards { display: flex; gap: 32px; }
+
+      .scene-card {
+        width: 240px; padding: 36px 28px; cursor: pointer;
+        border-radius: 16px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(0,200,255,0.18);
+        backdrop-filter: blur(12px);
+        transition: transform 0.25s ease, border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+        animation: cardIn 0.7s ease both;
+      }
+      .scene-card:nth-child(2) { animation-delay: 0.12s; }
+      .scene-card:hover {
+        transform: translateY(-8px);
+        border-color: rgba(0,220,255,0.7);
+        background: rgba(0,180,255,0.08);
+        box-shadow: 0 0 40px rgba(0,180,255,0.2);
+      }
+      .scene-card:active { transform: translateY(-4px) scale(0.98); }
+
+      .card-icon { font-size: 2.8rem; margin-bottom: 16px; filter: drop-shadow(0 0 12px rgba(0,200,255,0.5)); }
+      .card-name {
+        font-size: 1.25rem; font-weight: 600; letter-spacing: 0.08em;
+        color: #cceeff; margin-bottom: 10px;
+      }
+      .card-desc { font-size: 0.82rem; font-weight: 300; color: rgba(160,210,240,0.65); line-height: 1.5; }
+      .card-hint {
+        margin-top: 20px; font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase;
+        color: rgba(0,220,255,0.5); border-top: 1px solid rgba(0,220,255,0.15); padding-top: 14px;
+      }
+
+      @keyframes cardIn {
+        from { opacity: 0; transform: translateY(30px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      /* ── In-game HUD ─────────────────────────────────── */
       #fallback-ui {
-        position: absolute;
-        bottom: 20px;
-        left: 50%;
+        position: absolute; bottom: 20px; left: 50%;
         transform: translateX(-50%);
-        color: rgba(255, 255, 255, 0.5);
-        pointer-events: none;
-        text-align: center;
-        background: rgba(0, 0, 0, 0.5);
-        padding: 10px 20px;
-        border-radius: 8px;
-        display: none;
+        color: rgba(255,255,255,0.5); pointer-events: none; text-align: center;
+        background: rgba(0,0,0,0.5); padding: 10px 20px;
+        border-radius: 8px; display: none;
       }
     </style>
   </head>
   <body>
-    <div id="fallback-ui">Desktop Mode: Click to look, WASD to move, Spacebar to Ping (hold for wide), L for lights</div>
+
+    <!-- Scene Selector Overlay -->
+    <div id="scene-selector">
+      <div class="sel-inner">
+        <div class="sel-title">
+          <h1>🦇 BAT VISION</h1>
+          <p>Navigate by sound alone — or reveal the world.</p>
+        </div>
+        <div class="scene-cards">
+          <div class="scene-card" id="card-cave" onclick="selectScene('cave')">
+            <div class="card-icon">🕳</div>
+            <div class="card-name">CAVE SYSTEM</div>
+            <div class="card-desc">A multi-chamber underground cave with crystals, waterfalls, and a colony of bats.</div>
+            <div class="card-hint">Echolocation in darkness</div>
+          </div>
+          <div class="scene-card" id="card-city" onclick="selectScene('city')">
+            <div class="card-icon">🏙</div>
+            <div class="card-name">CITY BLOCK</div>
+            <div class="card-desc">A 2×3 grid of city blocks — shops, homes, a park, a public square, and more.</div>
+            <div class="card-hint">Urban sonar mapping</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="fallback-ui">Desktop Mode: Click to look · WASD to move · Space to Ping (hold = wide) · L for lights</div>
     <script type="module" src="./main.js"></script>
+
+    <script>
+      window.selectScene = function(scene) {
+        const overlay = document.getElementById('scene-selector');
+        overlay.classList.add('fade-out');
+        setTimeout(() => {
+          overlay.style.display = 'none';
+          window.dispatchEvent(new CustomEvent('sceneSelected', { detail: { scene } }));
+        }, 800);
+      };
+    </script>
   </body>
 </html>

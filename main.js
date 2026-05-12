@@ -7,6 +7,8 @@ import { CaveBuilder } from './environment/CaveBuilder.js';
 import { CaveMaterials } from './environment/CaveMaterials.js';
 import { ObjectPlacer } from './environment/ObjectPlacer.js';
 import { EnvironmentAnimator } from './environment/EnvironmentAnimator.js';
+import { CityBuilder } from './environment/CityBuilder.js';
+import { CityMaterials } from './environment/CityMaterials.js';
 import { PingSystem } from './systems/PingSystem.js';
 import { EchoAudioSystem } from './audio/EchoAudioSystem.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -26,6 +28,7 @@ const SCENE_BG_LIT = 0x060812;
 let scene, camera, renderer, locomotion, collisionSystem;
 let echoShaderSystem, caveBuilder, objectPlacer, pingSystem, echoAudioSystem;
 let environmentAnimator;
+let currentSceneType = 'cave'; // set by scene selector
 let composer;
 let lastTime = performance.now();
 let isRegularVision = false;
@@ -42,8 +45,56 @@ let firstPingFired = false;
 let firstPingTime = 0;
 let bloomPulse = 0; // Decaying bloom spike on ping fire
 
-init();
-animate();
+// Wait for scene selection before starting
+window.addEventListener('sceneSelected', (e) => {
+    currentSceneType = e.detail.scene;
+    init();
+    animate();
+});
+
+function buildEnvironment(scene) {
+    if (currentSceneType === 'city') {
+        // ── City Scene ──────────────────────────────────
+        scene.fog = new THREE.FogExp2(0x000208, 0.015);
+        scene.background = new THREE.Color(0x000208);
+
+        const cityMats = new CityMaterials();
+        const cityBuilder = new CityBuilder(echoShaderSystem);
+        window._cityBuilder = cityBuilder;
+        cityBuilder.build(scene, cityMats);
+
+        echoTargets = cityBuilder.getEchoTargets();
+        featureLights = cityBuilder.getFeatureLights();
+
+        echoTargets.forEach(t => {
+            if (t.userData && t.userData.echoMaterial) t.material = t.userData.echoMaterial;
+        });
+
+        // Start ambient city audio (2 low, localized sources)
+        const cityAudioSources = cityBuilder.getAudioSourceConfigs();
+        // audio wired after EchoAudioSystem init in init()
+        window._pendingCityAudio = cityAudioSources;
+
+    } else {
+        // ── Cave Scene ──────────────────────────────────
+        scene.fog = new THREE.FogExp2(0x000005, 0.06);
+        scene.background = new THREE.Color(0x000005);
+
+        caveBuilder = new CaveBuilder(echoShaderSystem);
+        environmentAnimator = new EnvironmentAnimator();
+        const caveMaterials = new CaveMaterials();
+        caveBuilder.build(scene, caveMaterials);
+
+        objectPlacer = new ObjectPlacer(echoShaderSystem, caveBuilder);
+        objectPlacer.build(scene, caveMaterials, environmentAnimator);
+
+        echoTargets = caveBuilder.getEchoTargets();
+        echoTargets.forEach(t => {
+            if (t.userData && t.userData.echoMaterial) t.material = t.userData.echoMaterial;
+        });
+        featureLights = objectPlacer.getFeatureLights();
+    }
+}
 
 function init() {
     const container = document.createElement('div');
@@ -89,74 +140,50 @@ function init() {
         camera.position.set(0, 1.6, 0);
     });
 
-    // --- Build environment ---
+    // --- Build environment (scene-aware) ---
     locomotion = new LocomotionSystem(camera, renderer);
     scene.add(locomotion.getDolly());
 
     echoShaderSystem = new EchoShaderSystem(scene);
-    caveBuilder = new CaveBuilder(echoShaderSystem);
-    environmentAnimator = new EnvironmentAnimator();
 
-    const caveMaterials = new CaveMaterials();
-
-    caveBuilder.build(scene, caveMaterials);
-
-    objectPlacer = new ObjectPlacer(echoShaderSystem, caveBuilder);
-    objectPlacer.build(scene, caveMaterials, environmentAnimator);
-
-    echoTargets = caveBuilder.getEchoTargets();
-
-    // Ensure every echo target starts in echo mode (invisible until pinged)
-    echoTargets.forEach(target => {
-        if (target.userData && target.userData.echoMaterial) {
-            target.material = target.userData.echoMaterial;
-        }
-    });
-
-    // Sprint B: Collect crystal/fungi light references from ObjectPlacer
-    featureLights = objectPlacer.getFeatureLights();
+    buildEnvironment(scene);
 
     // --- Collision system ---
     collisionSystem = new CollisionSystem();
-    collisionSystem.addColliders(...caveBuilder.getColliders());
+    collisionSystem.addColliders(...(caveBuilder || window._cityBuilder).getColliders());
+    // Override roomBounds with scene-specific ones
+    if (currentSceneType === 'city') {
+        collisionSystem.roomBounds = window._cityBuilder.roomBounds;
+    }
     locomotion.setCollisionSystem(collisionSystem);
 
     // --- Facilitator Mode / Regular Vision ---
     realWorldLights = new THREE.Group();
-    const hemiLight = new THREE.HemisphereLight(0xaaaaaa, 0x444444, 0.4);
-    realWorldLights.add(hemiLight);
-
-    const headlamp = new THREE.PointLight(0xffffff, 1.5, 30);
-    camera.add(headlamp);
-
-    // Atmospheric room lights for lights-on mode
-    const blueLight = new THREE.PointLight(0x0044ff, 2.0, 40);
-    blueLight.position.set(10, 5, -15);
-    realWorldLights.add(blueLight);
-
-    const pinkLight = new THREE.PointLight(0xff0088, 2.0, 40);
-    pinkLight.position.set(-10, 5, -5);
-    realWorldLights.add(pinkLight);
-
-    // Crystal grotto accent light
-    const crystalLight = new THREE.PointLight(0x4488ff, 3.0, 25);
-    crystalLight.position.set(0, 4, -25);
-    realWorldLights.add(crystalLight);
-
-    // Lake room water glow
-    const lakeLight = new THREE.PointLight(0x00aaaa, 2.5, 30);
-    lakeLight.position.set(0, 1, 22);
-    realWorldLights.add(lakeLight);
-
-    // Bat alcove warm tone
-    const batLight = new THREE.PointLight(0xff6633, 1.5, 20);
-    batLight.position.set(-22, 6, 0);
-    realWorldLights.add(batLight);
-
-    // Tunnel atmosphere
-    const tunnelLight = new THREE.PointLight(0x9966cc, 1.5, 25);
-    tunnelLight.position.set(22, 3, 0);
-    realWorldLights.add(tunnelLight);
+    if (currentSceneType === 'city') {
+        // City night: soft moonlight + distributed warm street fills
+        const moonAmbient = new THREE.AmbientLight(0x1a2040, 0.6);
+        realWorldLights.add(moonAmbient);
+        const hemi = new THREE.HemisphereLight(0x203060, 0x0a0a10, 0.5);
+        realWorldLights.add(hemi);
+        // 4 fill lights spread across the 2×3 grid
+        [[-15,-30],[15,-30],[-15,15],[15,15]].forEach(([x,z]) => {
+            const fl = new THREE.PointLight(0xffd080, 0.6, 35, 2);
+            fl.position.set(x, 8, z);
+            realWorldLights.add(fl);
+        });
+    } else {
+        // Cave: coloured atmospheric lights per room
+        const hemiLight = new THREE.HemisphereLight(0xaaaaaa, 0x444444, 0.4);
+        realWorldLights.add(hemiLight);
+        const headlamp = new THREE.PointLight(0xffffff, 1.5, 30);
+        camera.add(headlamp);
+        const blueLight  = new THREE.PointLight(0x0044ff, 2.0, 40); blueLight.position.set(10,5,-15);  realWorldLights.add(blueLight);
+        const pinkLight  = new THREE.PointLight(0xff0088, 2.0, 40); pinkLight.position.set(-10,5,-5);  realWorldLights.add(pinkLight);
+        const crystalLight = new THREE.PointLight(0x4488ff, 3.0, 25); crystalLight.position.set(0,4,-25); realWorldLights.add(crystalLight);
+        const lakeLight  = new THREE.PointLight(0x00aaaa, 2.5, 30); lakeLight.position.set(0,1,22);    realWorldLights.add(lakeLight);
+        const batLight   = new THREE.PointLight(0xff6633, 1.5, 20); batLight.position.set(-22,6,0);    realWorldLights.add(batLight);
+        const tunnelLight= new THREE.PointLight(0x9966cc, 1.5, 25); tunnelLight.position.set(22,3,0);  realWorldLights.add(tunnelLight);
+    }
 
     realWorldLights.visible = false;
     scene.add(realWorldLights);
@@ -187,12 +214,15 @@ function init() {
                 }
             });
 
-            // Sprint B: use stored refs instead of scene.traverse
+            // Toggle feature lights (city lamps or cave crystals/fungi)
             const isVR = renderer.xr.isPresenting;
             featureLights.forEach(light => {
                 if (isRegularVision) {
-                    // Sprint C: cap lights in VR to save perf
-                    light.intensity = (isVR && light.userData._isFungiLight) ? 0 : (light.userData._isCrystalLight ? 2.0 : 0.8);
+                    if (light.userData._isCityLamp) {
+                        light.intensity = isVR ? 0.8 : 1.2; // Warm street lamp
+                    } else {
+                        light.intensity = (isVR && light.userData._isFungiLight) ? 0 : (light.userData._isCrystalLight ? 2.0 : 0.8);
+                    }
                 } else {
                     light.intensity = 0;
                 }
@@ -215,15 +245,20 @@ function init() {
     };
 
     // Sprint B: co-locate audio sources with ObjectPlacer mesh positions
-    const audioSources = objectPlacer.getAudioSourceConfigs();
-    // Add a few independent cave drips not tied to specific objects
-    audioSources.push(
-        { type: 'drip', position: new THREE.Vector3(-8, 6, -6),  rate: 2.2 },
-        { type: 'drip', position: new THREE.Vector3(6,  7, -10), rate: 0.9 },
-        { type: 'drip', position: new THREE.Vector3(-3, 5, 8),   rate: 3.5 },
-        { type: 'stream', position: new THREE.Vector3(-14, 0.5, -8), intensity: 0.5 },
-    );
-    echoAudioSystem.startAmbientSources(audioSources);
+    const audioSources = (objectPlacer ? objectPlacer.getAudioSourceConfigs() : []);
+    if (currentSceneType === 'city') {
+        const cityAudio = window._pendingCityAudio || [];
+        echoAudioSystem.startAmbientSources(cityAudio);
+    } else {
+        // Add a few independent cave drips not tied to specific objects
+        audioSources.push(
+            { type: 'drip',   position: new THREE.Vector3(-8, 6, -6),      rate: 2.2 },
+            { type: 'drip',   position: new THREE.Vector3(6,  7, -10),     rate: 0.9 },
+            { type: 'drip',   position: new THREE.Vector3(-3, 5, 8),       rate: 3.5 },
+            { type: 'stream', position: new THREE.Vector3(-14, 0.5, -8),   intensity: 0.5 },
+        );
+        echoAudioSystem.startAmbientSources(audioSources);
+    }
 
     // Sprint B: Onboarding text — head-locked to camera dolly
     const canvas = document.createElement('canvas');
