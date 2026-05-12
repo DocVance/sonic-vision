@@ -110,6 +110,9 @@ export class PingSystem {
             this.echoAudioSystem.playChirp(isLowFreq);
         }
         this.triggerHaptics(isLowFreq ? 1.0 : 0.6, isLowFreq ? 100 : 40);
+
+        // Notify external callback (used for bloom pulse, onboarding fade, etc.)
+        if (this.onPing) this.onPing(isLowFreq);
     }
     
     triggerHaptics(intensity, durationMs) {

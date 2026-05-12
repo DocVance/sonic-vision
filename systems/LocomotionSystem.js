@@ -52,28 +52,31 @@ export class LocomotionSystem {
             if (this.keys.hasOwnProperty(key)) this.keys[key] = false;
         });
 
-        // Simple drag to look for desktop
-        let isDragging = false;
-        let previousMousePosition = { x: 0, y: 0 };
-        this.camera.rotation.order = 'YXZ'; // Important for FPS camera
+        // Pointer lock for natural FPS-style look
+        this.camera.rotation.order = 'YXZ';
+        this.pointerLocked = false;
 
-        window.addEventListener('mousedown', () => { isDragging = true; });
-        window.addEventListener('mouseup', () => { isDragging = false; });
+        this.renderer.domElement.addEventListener('click', () => {
+            if (!this.renderer.xr.isPresenting && !this.pointerLocked) {
+                this.renderer.domElement.requestPointerLock();
+            }
+        });
+
+        document.addEventListener('pointerlockchange', () => {
+            this.pointerLocked = document.pointerLockElement === this.renderer.domElement;
+        });
+
         window.addEventListener('mousemove', (e) => {
-            if (isDragging && !this.renderer.xr.isPresenting) {
-                const deltaMove = {
-                    x: e.movementX || e.offsetX - previousMousePosition.x,
-                    y: e.movementY || e.offsetY - previousMousePosition.y
-                };
-
-                this.camera.rotation.y -= deltaMove.x * 0.005;
-                this.camera.rotation.x -= deltaMove.y * 0.005;
-
-                // Clamp pitch
+            if (this.pointerLocked && !this.renderer.xr.isPresenting) {
+                this.camera.rotation.y -= e.movementX * 0.002;
+                this.camera.rotation.x -= e.movementY * 0.002;
                 this.camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, this.camera.rotation.x));
             }
-            previousMousePosition = { x: e.offsetX, y: e.offsetY };
         });
+
+        // Headbob state
+        this._bobTimer = 0;
+        this._bobAmplitude = 0;
     }
 
     update(dt) {
@@ -86,7 +89,7 @@ export class LocomotionSystem {
         // Apply floor tracking after movement
         if (this.collisionSystem) {
             this.collisionSystem.snapToFloor(this.dolly, dt);
-            // Hard boundary safety net — prevent escaping the cave entirely
+            // Hard boundary safety net
             this.collisionSystem.clampToBounds(this.dolly);
         }
     }
@@ -117,7 +120,6 @@ export class LocomotionSystem {
                                 desiredDelta.addScaledVector(forward, -y * this.speed * dt);
                                 desiredDelta.addScaledVector(right, x * this.speed * dt);
 
-                                // Constrain through collision
                                 const allowed = this.collisionSystem
                                     ? this.collisionSystem.constrainMovement(this.dolly, desiredDelta, dt)
                                     : desiredDelta;
@@ -174,6 +176,17 @@ export class LocomotionSystem {
 
         if (this.keys.q) { this.dolly.rotation.y += this.turnAngle * dt * 2; }
         if (this.keys.e) { this.dolly.rotation.y -= this.turnAngle * dt * 2; }
+
+        // Subtle headbob when walking — increases embodiment
+        const targetBob = moved ? 0.012 : 0;
+        this._bobAmplitude = THREE.MathUtils.lerp(this._bobAmplitude, targetBob, dt * 6);
+        if (this._bobAmplitude > 0.001) {
+            this._bobTimer += dt * 8;
+            this.camera.position.y = 1.6 + Math.sin(this._bobTimer) * this._bobAmplitude;
+        } else {
+            this._bobTimer = 0;
+            this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, 1.6, dt * 6);
+        }
 
         this.isMoving = moved;
     }

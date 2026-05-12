@@ -36,6 +36,12 @@ let echoTargets = [];
 // Sprint B: stored light references (no scene.traverse needed)
 let featureLights = [];
 
+// Subtle polish state
+let onboardingMesh = null;
+let firstPingFired = false;
+let firstPingTime = 0;
+let bloomPulse = 0; // Decaying bloom spike on ping fire
+
 init();
 animate();
 
@@ -199,6 +205,15 @@ function init() {
     echoAudioSystem = new EchoAudioSystem(camera);
     pingSystem.echoAudioSystem = echoAudioSystem;
 
+    // Wire ping callback for polish effects
+    pingSystem.onPing = (isLowFreq) => {
+        bloomPulse = isLowFreq ? 0.8 : 1.0; // Stronger pulse for high-freq pings
+        if (!firstPingFired) {
+            firstPingFired = true;
+            firstPingTime = performance.now();
+        }
+    };
+
     // Sprint B: co-locate audio sources with ObjectPlacer mesh positions
     const audioSources = objectPlacer.getAudioSourceConfigs();
     // Add a few independent cave drips not tied to specific objects
@@ -226,10 +241,17 @@ function init() {
     const tex = new THREE.CanvasTexture(canvas);
     const planeGeo = new THREE.PlaneGeometry(4, 1);
     const planeMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
-    const textMesh = new THREE.Mesh(planeGeo, planeMat);
-    textMesh.position.set(0, 0, -3); // In front of camera, inside dolly
-    // Attach to dolly so it moves with the player (head-locked in VR)
-    locomotion.getDolly().add(textMesh);
+    onboardingMesh = new THREE.Mesh(planeGeo, planeMat);
+    onboardingMesh.position.set(0, 0, -3);
+    locomotion.getDolly().add(onboardingMesh);
+
+    // Desktop cooldown HUD — radial arc showing ping readiness
+    const cooldownHud = document.createElement('canvas');
+    cooldownHud.id = 'cooldown-hud';
+    cooldownHud.width = 80;
+    cooldownHud.height = 80;
+    cooldownHud.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);pointer-events:none;opacity:0.6;z-index:10;';
+    document.body.appendChild(cooldownHud);
 
     window.addEventListener('resize', onWindowResize);
 }
@@ -258,6 +280,48 @@ function render() {
     const playerPos = new THREE.Vector3();
     camera.getWorldPosition(playerPos);
     if (echoShaderSystem) echoShaderSystem.update(dt, playerPos);
+
+    // --- Onboarding fade: dissolve after first ping ---
+    if (onboardingMesh && firstPingFired) {
+        const elapsed = (now - firstPingTime) / 1000;
+        if (elapsed > 2) {
+            const fade = 1 - Math.min(1, (elapsed - 2) / 2); // 2s delay then 2s fade
+            onboardingMesh.material.opacity = fade;
+            if (fade <= 0) {
+                onboardingMesh.parent.remove(onboardingMesh);
+                onboardingMesh = null;
+            }
+        }
+    }
+
+    // --- Bloom pulse: brief spike decaying back to baseline ---
+    if (bloomPass && bloomPulse > 0) {
+        bloomPulse *= 0.92; // Exponential decay
+        if (bloomPulse < 0.01) bloomPulse = 0;
+        const baseStrength = isRegularVision ? LIT_BLOOM_STRENGTH : ECHO_BLOOM_STRENGTH;
+        bloomPass.strength = baseStrength + bloomPulse * 1.5;
+    }
+
+    // --- Desktop cooldown HUD ---
+    if (!renderer.xr.isPresenting && pingSystem) {
+        const hudCanvas = document.getElementById('cooldown-hud');
+        if (hudCanvas) {
+            const ctx2 = hudCanvas.getContext('2d');
+            ctx2.clearRect(0, 0, 80, 80);
+            const ratio = Math.max(0, 1 - (pingSystem.cooldown / pingSystem.highFreqCooldown));
+            const ready = ratio >= 1;
+            ctx2.beginPath();
+            ctx2.arc(40, 40, 28, -Math.PI/2, -Math.PI/2 + ratio * Math.PI * 2);
+            ctx2.strokeStyle = ready ? 'rgba(0,255,255,0.7)' : 'rgba(255,80,80,0.5)';
+            ctx2.lineWidth = 3;
+            ctx2.stroke();
+            // Small center dot
+            ctx2.beginPath();
+            ctx2.arc(40, 40, 3, 0, Math.PI * 2);
+            ctx2.fillStyle = ready ? 'rgba(0,255,255,0.8)' : 'rgba(255,80,80,0.4)';
+            ctx2.fill();
+        }
+    }
 
     if (renderer.xr.isPresenting) {
         renderer.render(scene, camera);
