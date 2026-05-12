@@ -2,6 +2,7 @@ import * as THREE from 'three';
 
 const MAX_PINGS = 4;
 const MAX_PARTICLES = 10000;
+const MAX_GRID_LINES = 8000; // Pairs of vertices for topology lines
 
 export class EchoShaderSystem {
     constructor(scene) {
@@ -13,13 +14,13 @@ export class EchoShaderSystem {
             uPingPositions: { value: new Array(MAX_PINGS).fill(null).map(() => new THREE.Vector3()) },
             uPingDirections: { value: new Array(MAX_PINGS).fill(null).map(() => new THREE.Vector3()) },
             uPingTimes: { value: new Array(MAX_PINGS).fill(-999.0) },
-            uPingParams: { value: new Array(MAX_PINGS).fill(null).map(() => new THREE.Vector4()) }, // x=speed, y=maxRange, z=coneCos, w=unused
+            uPingParams: { value: new Array(MAX_PINGS).fill(null).map(() => new THREE.Vector4()) },
             uPingColors: { value: new Array(MAX_PINGS).fill(null).map(() => new THREE.Color()) }
         };
         
         this.pingIndex = 0;
         
-        // --- Particle System (Layers B & C) ---
+        // --- Particle System (Layer B — hit dots) ---
         this.particleIndex = 0;
         
         const positions = new Float32Array(MAX_PARTICLES * 3);
@@ -56,10 +57,11 @@ export class EchoShaderSystem {
                     
                     float size = 0.0;
                     if (vAge >= 0.0 && vAge < 45.0) {
-                        float decay = clamp(1.0 - (vAge / 3.0), 0.0, 1.0);
-                        size = 20.0 * decay + 5.0; 
+                        // Smaller, sharper dots — more like sonar pips
+                        float decay = clamp(1.0 - (vAge / 4.0), 0.0, 1.0);
+                        size = 6.0 * decay + 2.0;
                         
-                        size *= clamp(10.0 / max(vDist, 1.0), 0.2, 1.0);
+                        size *= clamp(8.0 / max(vDist, 1.0), 0.3, 1.0);
                     }
                     
                     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
@@ -79,18 +81,20 @@ export class EchoShaderSystem {
                     float distFromCenter = length(coord);
                     if (distFromCenter > 0.5) discard;
                     
-                    float alpha = 1.0 - (distFromCenter * 2.0); 
+                    // Sharper falloff — more crisp dot, less blobby glow
+                    float alpha = smoothstep(0.5, 0.15, distFromCenter);
                     
                     float intensity = 0.0;
-                    if (vAge < 3.0) {
-                        intensity = 1.0 - (vAge / 3.0);
+                    if (vAge < 4.0) {
+                        intensity = 1.0 - (vAge / 4.0);
                     } else {
-                        intensity = 0.1 * (1.0 - (vAge - 3.0)/42.0); 
+                        // Long persistent afterglow at low intensity
+                        intensity = 0.15 * (1.0 - (vAge - 4.0) / 41.0); 
                     }
                     
                     intensity *= clamp(1.0 - (vDist / 40.0), 0.1, 1.0);
                     
-                    gl_FragColor = vec4(vColor.r * intensity, vColor.g * intensity, vColor.b * intensity, alpha * intensity);
+                    gl_FragColor = vec4(vColor * intensity, alpha * intensity);
                 }
             `,
             transparent: true,
@@ -101,6 +105,79 @@ export class EchoShaderSystem {
         this.particleSystem = new THREE.Points(this.particleGeometry, this.particleMaterial);
         this.particleSystem.frustumCulled = false;
         this.scene.add(this.particleSystem);
+        
+        // --- Topology Grid Lines (Layer C — sonar wireframe) ---
+        this.gridLineIndex = 0;
+        
+        const linePositions = new Float32Array(MAX_GRID_LINES * 2 * 3); // 2 vertices per line
+        const lineCreationTimes = new Float32Array(MAX_GRID_LINES * 2).fill(-999.0);
+        const lineColors = new Float32Array(MAX_GRID_LINES * 2 * 3);
+        
+        this.gridGeometry = new THREE.BufferGeometry();
+        this.gridGeometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+        this.gridGeometry.setAttribute('creationTime', new THREE.BufferAttribute(lineCreationTimes, 1));
+        this.gridGeometry.setAttribute('color', new THREE.BufferAttribute(lineColors, 3));
+        
+        this.gridMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.pingData.uTime,
+                uPlayerPosition: { value: new THREE.Vector3() }
+            },
+            vertexShader: `
+                attribute float creationTime;
+                attribute vec3 color;
+                
+                uniform float uTime;
+                uniform vec3 uPlayerPosition;
+                
+                varying vec3 vColor;
+                varying float vAge;
+                varying float vAlpha;
+                
+                void main() {
+                    vColor = color;
+                    vAge = uTime - creationTime;
+                    float dist = distance(position, uPlayerPosition);
+                    
+                    // Lines fade in quickly then persist as faint grid
+                    float fadeIn = smoothstep(0.0, 0.3, vAge);
+                    float fadeOut = vAge < 5.0 
+                        ? 1.0 
+                        : clamp(1.0 - (vAge - 5.0) / 40.0, 0.0, 1.0);
+                    float distFade = clamp(1.0 - (dist / 35.0), 0.05, 1.0);
+                    
+                    vAlpha = fadeIn * fadeOut * distFade * 0.35;
+                    
+                    if (vAge < 0.0 || vAge > 45.0) vAlpha = 0.0;
+                    
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vColor;
+                varying float vAge;
+                varying float vAlpha;
+                
+                void main() {
+                    if (vAlpha <= 0.0) discard;
+                    
+                    // Subtle grid color — dimmer than the dots
+                    gl_FragColor = vec4(vColor * 0.6, vAlpha);
+                }
+            `,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        
+        this.gridLines = new THREE.LineSegments(this.gridGeometry, this.gridMaterial);
+        this.gridLines.frustumCulled = false;
+        this.scene.add(this.gridLines);
+        
+        // --- Hit point spatial index for topology generation ---
+        // Stores recent hits for connecting nearby points
+        this._recentHits = [];
+        this._gridConnectionRadius = 2.0; // Max distance to draw a topology line
     }
     
     createMaterial(acousticProfile = {}) {
@@ -210,7 +287,7 @@ export class EchoShaderSystem {
         this.pingData.uPingDirections.value[i].copy(direction).normalize();
         this.pingData.uPingTimes.value[i] = this.pingData.uTime.value;
         
-        const speed = 34.0; // m/s
+        const speed = 34.0;
         const coneCos = Math.cos(coneAngleDegrees * (Math.PI / 180) / 2);
         this.pingData.uPingParams.value[i].set(speed, maxRange, coneCos, 0);
         
@@ -221,6 +298,9 @@ export class EchoShaderSystem {
         }
         
         this.pingIndex = (this.pingIndex + 1) % MAX_PINGS;
+        
+        // Clear recent hits for fresh topology generation per ping
+        this._recentHits = [];
     }
     
     addHitPoint(hit, isLowFreq) {
@@ -247,10 +327,66 @@ export class EchoShaderSystem {
         colorAttr.needsUpdate = true;
         
         this.particleIndex = (this.particleIndex + 1) % MAX_PARTICLES;
+        
+        // --- Topology grid generation ---
+        // Connect this hit to nearby recent hits to form sonar wireframe
+        const now = this.pingData.uTime.value;
+        const newHit = { x: hit.point.x, y: hit.point.y, z: hit.point.z };
+        
+        const linePos = this.gridGeometry.attributes.position;
+        const lineTime = this.gridGeometry.attributes.creationTime;
+        const lineColor = this.gridGeometry.attributes.color;
+        
+        let connectionsForThisHit = 0;
+        const maxConnections = 3; // Limit connections per hit to keep lines clean
+        
+        for (let j = this._recentHits.length - 1; j >= 0 && connectionsForThisHit < maxConnections; j--) {
+            const other = this._recentHits[j];
+            const dx = newHit.x - other.x;
+            const dy = newHit.y - other.y;
+            const dz = newHit.z - other.z;
+            const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+            
+            if (dist > 0.2 && dist < this._gridConnectionRadius) {
+                const li = this.gridLineIndex;
+                const v0 = li * 2;
+                const v1 = li * 2 + 1;
+                
+                linePos.setXYZ(v0, newHit.x, newHit.y, newHit.z);
+                linePos.setXYZ(v1, other.x, other.y, other.z);
+                
+                lineTime.setX(v0, now);
+                lineTime.setX(v1, now);
+                
+                // Lines are slightly dimmer than dots
+                const lr = r * 0.5;
+                const lg = g * 0.5;
+                const lb = b * 0.5;
+                lineColor.setXYZ(v0, lr, lg, lb);
+                lineColor.setXYZ(v1, lr, lg, lb);
+                
+                this.gridLineIndex = (this.gridLineIndex + 1) % MAX_GRID_LINES;
+                connectionsForThisHit++;
+            }
+        }
+        
+        if (connectionsForThisHit > 0) {
+            linePos.needsUpdate = true;
+            lineTime.needsUpdate = true;
+            lineColor.needsUpdate = true;
+        }
+        
+        this._recentHits.push(newHit);
+        
+        // Cap recent hits to prevent growing forever within a single ping
+        if (this._recentHits.length > 500) {
+            this._recentHits = this._recentHits.slice(-300);
+        }
     }
     
     update(dt, playerPosition) {
         this.pingData.uTime.value += dt;
         this.particleMaterial.uniforms.uPlayerPosition.value.copy(playerPosition);
+        this.gridMaterial.uniforms.uPlayerPosition.value.copy(playerPosition);
     }
 }
