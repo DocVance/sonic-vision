@@ -117,18 +117,20 @@ export class ObjectPlacer {
             geometries.push(geo);
         });
 
-        // Rock ledge shelves on main chamber walls — flat BoxGeometry slabs
+        // Rock ledge shelves — toNonIndexed() so they match DodecahedronGeometry (non-indexed)
         [
             { x:-14, y:3.5, z:-4,  w:0.4, h:0.5, d:6 },
             { x: 14, y:5.0, z: 3,  w:0.4, h:0.5, d:4 },
             { x: -4, y:2.5, z:-14, w:5,   h:0.5, d:0.4 },
         ].forEach(({ x, y, z, w, h, d }) => {
-            const g = new THREE.BoxGeometry(w, h, d);
+            const g = new THREE.BoxGeometry(w, h, d).toNonIndexed();
             g.translate(x, y, z);
             geometries.push(g);
         });
 
-        const merged = BufferGeometryUtils.mergeGeometries(geometries);
+        // Normalise: ensure all are non-indexed before merge
+        const toMerge = geometries.map(g => g.index ? g.toNonIndexed() : g);
+        const merged = BufferGeometryUtils.mergeGeometries(toMerge);
         merged.computeVertexNormals();
         const mesh = new THREE.Mesh(merged, echoMat);
         mesh.userData.echoMaterial = echoMat;
@@ -530,12 +532,14 @@ export class ObjectPlacer {
             geometries.push(geo);
         });
 
-        // Bone-dry shallow pool — flat hexagonal disk at lake room
-        const poolGeo = new THREE.CylinderGeometry(4.5, 4.5, 0.15, 8, 1);
+        // Bone-dry shallow pool — toNonIndexed() to match OctahedronGeometry (non-indexed)
+        const poolGeo = new THREE.CylinderGeometry(4.5, 4.5, 0.15, 8, 1).toNonIndexed();
         poolGeo.translate(0, -1.0, 22);
         geometries.push(poolGeo);
 
-        const merged = BufferGeometryUtils.mergeGeometries(geometries);
+        // Normalise before merge
+        const toMerge = geometries.map(g => g.index ? g.toNonIndexed() : g);
+        const merged = BufferGeometryUtils.mergeGeometries(toMerge);
         merged.computeVertexNormals();
         const mesh = new THREE.Mesh(merged, echoMat);
         mesh.userData.echoMaterial = echoMat;
