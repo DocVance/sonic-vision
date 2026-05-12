@@ -142,17 +142,17 @@ export class CityBuilder {
     // ── ground ─────────────────────────────────────────────────────────────
 
     _ground(scene, mats) {
-        // Street asphalt (N-S + E-W)
-        this._box(scene, mats, 'asphalt', 0, -0.05, 0,   8, 0.1, 84, [0.2,0.2,0.25], false); // N-S
-        this._box(scene, mats, 'asphalt', 0, -0.05, -19, 48, 0.1, 8,  [0.2,0.2,0.25], false); // E-W top
-        this._box(scene, mats, 'asphalt', 0, -0.05,  19, 48, 0.1, 8,  [0.2,0.2,0.25], false); // E-W bottom
-        // Sidewalk strips (concrete) around each block
+        // Street asphalt (N-S + E-W) — colliders so snapToFloor works
+        this._box(scene, mats, 'asphalt', 0, -0.05, 0,   8, 0.1, 84, [0.2,0.2,0.25], true);
+        this._box(scene, mats, 'asphalt', 0, -0.05, -19, 48, 0.1, 8,  [0.2,0.2,0.25], true);
+        this._box(scene, mats, 'asphalt', 0, -0.05,  19, 48, 0.1, 8,  [0.2,0.2,0.25], true);
+        // Sidewalk slabs — colliders for floor snap
         const swData = [
             [-15,-0.02,-30, 22,0.08,22], [15,-0.02,-30, 22,0.08,22],
             [-15,-0.02,  0, 22,0.08,22], [15,-0.02,  0, 22,0.08,22],
             [-15,-0.02, 30, 22,0.08,22], [15,-0.02, 30, 22,0.08,22],
         ];
-        swData.forEach(d => this._box(scene, mats, 'concrete', d[0],d[1],d[2],d[3],d[4],d[5],[0.6,0.6,0.65],false));
+        swData.forEach(d => this._box(scene, mats, 'concrete', d[0],d[1],d[2],d[3],d[4],d[5],[0.6,0.6,0.65], true));
         // Curb strips
         [[-4.3,-0.02,0],[4.3,-0.02,0]].forEach(([x,y,z]) =>
             this._box(scene,mats,'concrete',x,y,z,0.3,0.15,84,[0.6,0.6,0.65],false));

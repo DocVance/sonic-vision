@@ -328,57 +328,64 @@ export class EchoShaderSystem {
         
         this.particleIndex = (this.particleIndex + 1) % MAX_PARTICLES;
         
-        // --- Topology grid generation ---
-        // Connect this hit to nearby recent hits to form sonar wireframe
+        // --- Topology grid: structured horizontal lines along surfaces ---
+        // Only connect hits that share the same surface (matching normals)
+        // and are at the same height band (prevents cross-surface spaghetti).
         const now = this.pingData.uTime.value;
-        const newHit = { x: hit.point.x, y: hit.point.y, z: hit.point.z };
+        const nx = hit.normal.x, ny = hit.normal.y, nz = hit.normal.z;
+        const newHit = {
+            x: hit.point.x, y: hit.point.y, z: hit.point.z,
+            nx, ny, nz,
+            isFloor: ny > 0.7   // nearly upward normal = floor/ceiling
+        };
         
-        const linePos = this.gridGeometry.attributes.position;
-        const lineTime = this.gridGeometry.attributes.creationTime;
+        const linePos   = this.gridGeometry.attributes.position;
+        const lineTime  = this.gridGeometry.attributes.creationTime;
         const lineColor = this.gridGeometry.attributes.color;
         
         let connectionsForThisHit = 0;
-        const maxConnections = 3; // Limit connections per hit to keep lines clean
-        
-        for (let j = this._recentHits.length - 1; j >= 0 && connectionsForThisHit < maxConnections; j--) {
+        const MAX_CONN = 2;                // 2 connections max keeps lines clean
+        const MAX_DIST = 1.6;              // tighter radius reduces long diagonal leaps
+
+        for (let j = this._recentHits.length - 1; j >= 0 && connectionsForThisHit < MAX_CONN; j--) {
             const other = this._recentHits[j];
+
+            // 1. Same surface: normals must be nearly parallel (dot > 0.85)
+            const normalDot = nx * other.nx + ny * other.ny + nz * other.nz;
+            if (normalDot < 0.85) continue;
+
+            // 2. Same height band for wall hits (avoids vertical diagonals across floors)
+            const dy = Math.abs(newHit.y - other.y);
+            if (!newHit.isFloor && dy > 0.28) continue; // Wall hits: stay within 28cm band
+
+            // 3. Horizontal distance check
             const dx = newHit.x - other.x;
-            const dy = newHit.y - other.y;
             const dz = newHit.z - other.z;
-            const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-            
-            if (dist > 0.2 && dist < this._gridConnectionRadius) {
-                const li = this.gridLineIndex;
-                const v0 = li * 2;
-                const v1 = li * 2 + 1;
-                
-                linePos.setXYZ(v0, newHit.x, newHit.y, newHit.z);
-                linePos.setXYZ(v1, other.x, other.y, other.z);
-                
-                lineTime.setX(v0, now);
-                lineTime.setX(v1, now);
-                
-                // Lines are slightly dimmer than dots
-                const lr = r * 0.5;
-                const lg = g * 0.5;
-                const lb = b * 0.5;
-                lineColor.setXYZ(v0, lr, lg, lb);
-                lineColor.setXYZ(v1, lr, lg, lb);
-                
-                this.gridLineIndex = (this.gridLineIndex + 1) % MAX_GRID_LINES;
-                connectionsForThisHit++;
-            }
+            const hDist = Math.sqrt(dx*dx + dz*dz + dy*dy);
+            if (hDist < 0.15 || hDist > MAX_DIST) continue;
+
+            // Write line segment
+            const v0 = this.gridLineIndex * 2;
+            const v1 = v0 + 1;
+            linePos.setXYZ(v0, newHit.x, newHit.y, newHit.z);
+            linePos.setXYZ(v1, other.x,  other.y,  other.z);
+            lineTime.setX(v0, now); lineTime.setX(v1, now);
+            // Walls: 40% of dot color — subtle; floors: 30%
+            const blend = newHit.isFloor ? 0.3 : 0.4;
+            lineColor.setXYZ(v0, r*blend, g*blend, b*blend);
+            lineColor.setXYZ(v1, r*blend, g*blend, b*blend);
+
+            this.gridLineIndex = (this.gridLineIndex + 1) % MAX_GRID_LINES;
+            connectionsForThisHit++;
         }
         
         if (connectionsForThisHit > 0) {
-            linePos.needsUpdate = true;
+            linePos.needsUpdate  = true;
             lineTime.needsUpdate = true;
             lineColor.needsUpdate = true;
         }
         
         this._recentHits.push(newHit);
-        
-        // Cap recent hits to prevent growing forever within a single ping
         if (this._recentHits.length > 500) {
             this._recentHits = this._recentHits.slice(-300);
         }

@@ -108,13 +108,20 @@ function init() {
     scene.add(ambientLight);
 
     camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
-    camera.position.set(0, 1.6, 0);
+    camera.position.set(0, 1.6, 0); // Eye height above dolly
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true;
     container.appendChild(renderer.domElement);
+
+    // Scene-specific spawn point applied after locomotion is created
+    // City: street-level at the N-S/E-W intersection center
+    // Cave: default at origin
+    window._spawnPoint = currentSceneType === 'city'
+        ? new THREE.Vector3(0, 0, 0)
+        : new THREE.Vector3(0, 0, 0);
 
     const renderScene = new RenderPass(scene, camera);
     bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
@@ -143,6 +150,12 @@ function init() {
     // --- Build environment (scene-aware) ---
     locomotion = new LocomotionSystem(camera, renderer);
     scene.add(locomotion.getDolly());
+
+    // City: spawn at street-level center, facing north (into the scene)
+    if (currentSceneType === 'city') {
+        locomotion.getDolly().position.set(0, 0, 3); // Slightly south of center, on N-S street
+        locomotion.getDolly().rotation.y = 0;        // Facing north (into city blocks)
+    }
 
     echoShaderSystem = new EchoShaderSystem(scene);
 
