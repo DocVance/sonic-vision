@@ -24,6 +24,7 @@ export class CityBuilder {
         this._blockMixedRetail(scene, mats);
         this._streetFurniture(scene, mats);
         this._cityLighting(scene);
+        this._detailPass(scene, mats);
     }
 
     // ── helpers ────────────────────────────────────────────────────────────
@@ -54,6 +55,34 @@ export class CityBuilder {
         this._echoTargets.push(mesh);
         this._colliders.push(mesh);
         return mesh;
+    }
+
+    // Variable window: irregular lit/dark + warm/cool tint variation
+    _win(scene, mats, x, y, z, w, h, idx = 0) {
+        const dark   = (idx % 7 === 0) || (idx % 11 === 3); // ~25% dark
+        const cool   = (idx % 3 === 1);                     // some windows slightly cooler
+        if (dark) {
+            // Dark window — still a sonar target, uses glass material
+            this._box(scene, mats, 'glass', x, y, z, w, h, 0.1, [0.3,0.35,0.55], false);
+        } else {
+            const tint = cool ? [0.85,0.92,1.0] : [1.0,0.9,0.5];
+            this._box(scene, mats, 'window', x, y, z, w, h, 0.1, tint, false);
+        }
+    }
+
+    // Low-poly parked car: body + cabin + 4 wheels (fixed N-S orientation)
+    _car(scene, mats, x, z, echoTint) {
+        const t = echoTint || [0.4,0.5,0.65];
+        this._box(scene, mats, 'metal', x, 0.45, z,   1.8, 0.8, 4.2, t);          // body
+        this._box(scene, mats, 'metal', x, 0.95, z-0.3, 1.4, 0.55, 2.4, t, false); // cabin
+        // Wheels
+        [[0.85,-1.5],[0.85,1.5],[-0.85,-1.5],[-0.85,1.5]].forEach(([wx,wz]) => {
+            const wm = this._cyl(scene, mats, 'metal', x+wx, 0.22, z+wz, 0.26, 0.26, 0.22, 8, [0.15,0.15,0.15]);
+            wm.rotation.z = Math.PI / 2;
+        });
+        // Headlights
+        this._box(scene, mats, 'window', x-0.5, 0.46, z+2.12, 0.35, 0.2, 0.05, [1,0.95,0.8], false);
+        this._box(scene, mats, 'window', x+0.5, 0.46, z+2.12, 0.35, 0.2, 0.05, [1,0.95,0.8], false);
     }
 
     _cone(scene, mats, matKey, x, y, z, r, h, seg, echoTint) {
@@ -171,10 +200,18 @@ export class CityBuilder {
         this._box(scene,mats,'building',cx,9,cz-8, 10,18,8,[0.4,0.5,0.8]);
         // Side stairwell
         this._box(scene,mats,'building',cx+7,5,cz-6, 3,10,6,[0.4,0.5,0.8]);
-        // Window rows on office tower
+        // Window rows on office tower — variable lit/dark
         for(let fl=0;fl<5;fl++) for(let wd=0;wd<3;wd++) {
-            this._box(scene,mats,'window',cx-3+wd*3,3+fl*3,cz-4.05,1.2,1.6,0.1,[1,0.9,0.5],false);
+            this._win(scene,mats,cx-3+wd*3,3+fl*3,cz-4.05,1.2,1.6,fl*3+wd);
+            // Window ledge below each window
+            this._box(scene,mats,'building',cx-3+wd*3,2.1+fl*3,cz-4.1,1.4,0.08,0.15,[0.5,0.6,0.8],false);
         }
+        // Cornice at retail roofline
+        this._box(scene,mats,'building',cx,4.2,cz+1.1,18.4,0.25,0.2,[0.5,0.6,0.8],false);
+        // Door frame on retail
+        this._box(scene,mats,'metal',cx,2.2,cz+1.05,1.2,4.2,0.1,[0.5,0.7,0.9],false);
+        this._box(scene,mats,'metal',cx-0.6,4.3,cz+1.05,0.1,0.25,0.1,[0.5,0.7,0.9],false);
+        this._box(scene,mats,'metal',cx+0.6,4.3,cz+1.05,0.1,0.25,0.1,[0.5,0.7,0.9],false);
         // Trees along east sidewalk
         [cz-6, cz, cz+6].forEach(z => this._tree(scene,mats,cx+12,z));
         // Lamp
@@ -248,10 +285,21 @@ export class CityBuilder {
         this._box(scene,mats,'roof',cx,12.15,cz, 16.4,0.3,14.4,[0.3,0.3,0.35],false);
         // Lobby extension
         this._box(scene,mats,'glass',cx,2.5,cz+7.5, 6,5,3,[0.4,0.6,0.9]);
-        // Window grid (4 floors × 5 wide)
+        // Window grid — variable (4 floors × 5 wide)
         for(let fl=0;fl<4;fl++) for(let wd=0;wd<5;wd++) {
-            this._box(scene,mats,'window',cx-8+wd*4,2.5+fl*2.5,cz-7.05,1.4,1.6,0.1,[1,0.9,0.5],false);
+            this._win(scene,mats,cx-8+wd*4,2.5+fl*2.5,cz-7.05,1.4,1.6,fl*5+wd);
         }
+        // Cornice at roofline + mid-floor ledge band
+        this._box(scene,mats,'building',cx,12.5,cz-7.15,16.6,0.3,0.25,[0.5,0.6,0.8],false);
+        this._box(scene,mats,'building',cx,7.5,cz-7.15,16.6,0.15,0.2,[0.5,0.6,0.8],false);
+        // Fire escape on south facade
+        for(let fl=0;fl<4;fl++) {
+            this._box(scene,mats,'metal',cx+7,1.5+fl*2.5,cz-7.1, 2.2,0.07,1.4,[0.5,0.7,0.9],false);
+        }
+        this._box(scene,mats,'metal',cx+8,5.5,cz-7.1, 0.08,10,0.08,[0.5,0.7,0.9],false);
+        // AC units on roof
+        [[cx-5,12.35,cz-3],[cx+3,12.35,cz+2],[cx-1,12.35,cz-6]].forEach(([ax,ay,az]) =>
+            this._box(scene,mats,'metal',ax,ay,az,1.0,0.5,0.7,[0.4,0.5,0.6],false));
         // Dumpster enclosure at back
         this._box(scene,mats,'dumpster',cx-6,0.7,cz-9, 2.5,1.4,1.5,[0.2,0.4,0.2],false);
         this._box(scene,mats,'metal',cx+6,0.7,cz-9,   2.5,1.4,1.5,[0.3,0.4,0.3],false);
@@ -341,12 +389,58 @@ export class CityBuilder {
     // ── Lighting setup ──────────────────────────────────────────────────────
 
     _cityLighting(scene) {
-        // Base ambient (moonlight — stays always)
         const moon = new THREE.AmbientLight(0x1a2240, 0.08);
         scene.add(moon);
-        // Hemisphere sky
         const hemi = new THREE.HemisphereLight(0x1a2035, 0x0a0a0a, 0.12);
         scene.add(hemi);
+    }
+
+    // ── Detail pass: cornices, ledges, cars, crosswalks, manholes, planters ──
+
+    _detailPass(scene, mats) {
+        // Parked cars on N-S street at staggered positions
+        this._car(scene, mats, -2.5,  -8,  [0.35,0.45,0.6]);
+        this._car(scene, mats,  2.5,   6,  [0.5,0.3,0.25]);
+        this._car(scene, mats, -2.5,  22,  [0.25,0.4,0.3]);
+        this._car(scene, mats,  2.5, -35,  [0.45,0.4,0.5]);
+
+        // Crosswalk stripes (5 stripes) at top and bottom intersections
+        for(let s=0;s<5;s++) {
+            this._box(scene,mats,'concrete', 0,0.01,-16.5+s*0.7, 7.5,0.02,0.42,[0.85,0.85,0.85],false);
+            this._box(scene,mats,'concrete', 0,0.01, 15.8+s*0.7, 7.5,0.02,0.42,[0.85,0.85,0.85],false);
+        }
+
+        // Manhole covers
+        [[0,0,0],[0,0,-22],[0,0,22]].forEach(([x,y,z]) =>
+            this._cyl(scene,mats,'metal',x,0.01,z,0.4,0.4,0.02,10,[0.5,0.5,0.55]));
+
+        // Planters near café entrance
+        [[15+2,0.35,-30-2.8],[15-2,0.35,-30-2.8]].forEach(([px,py,pz]) => {
+            this._box(scene,mats,'stone',px,py,pz,0.7,0.7,0.7,[0.7,0.7,0.65],false);
+            this._cone(scene,mats,'foliage',px,py+0.8,pz,0.45,1.0,6,[0.2,0.8,0.3]);
+        });
+
+        // Library entrance steps (3 steps)
+        [0.22,0.44,0.66].forEach((h,i) =>
+            this._box(scene,mats,'stone',15,h,30+7.5-i*0.35,5,0.22,0.7,[0.7,0.7,0.65],false));
+
+        // Residential window ledges (under each townhouse window)
+        [-21,-15,-9].forEach(x => {
+            this._box(scene,mats,'building',x-0.8,3.4,0-0.1,1.1,0.07,0.15,[0.7,0.6,0.45],false);
+            this._box(scene,mats,'building',x+0.8,3.4,0-0.1,1.1,0.07,0.15,[0.7,0.6,0.45],false);
+        });
+
+        // Awning supports on commercial strip (vertical posts)
+        [-22,-14,-6].forEach(x =>
+            this._box(scene,mats,'metal',x,2.2,-30+2,0.06,4.4,0.06,[0.5,0.6,0.7],false));
+
+        // Trash cans near public square kiosk
+        [[-10,30],[-10,32]].forEach(([x,z]) =>
+            this._cyl(scene,mats,'metal',x,0.4,z,0.2,0.22,0.8,8,[0.4,0.45,0.5]));
+
+        // Extra bench near library entrance
+        this._bench(scene,mats, 10, 37, Math.PI/2);
+        this._bench(scene,mats, 20, 37, -Math.PI/2);
     }
 
     // City-specific AABB safety bounds

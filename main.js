@@ -9,6 +9,7 @@ import { ObjectPlacer } from './environment/ObjectPlacer.js';
 import { EnvironmentAnimator } from './environment/EnvironmentAnimator.js';
 import { CityBuilder } from './environment/CityBuilder.js';
 import { CityMaterials } from './environment/CityMaterials.js';
+import { CitySkySphere } from './environment/CitySkySphere.js';
 import { PingSystem } from './systems/PingSystem.js';
 import { EchoAudioSystem } from './audio/EchoAudioSystem.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -27,8 +28,8 @@ const SCENE_BG_LIT = 0x060812;
 
 let scene, camera, renderer, locomotion, collisionSystem;
 let echoShaderSystem, caveBuilder, objectPlacer, pingSystem, echoAudioSystem;
-let environmentAnimator;
-let currentSceneType = 'cave'; // set by scene selector
+let environmentAnimator, citySkySphere;
+let currentSceneType = 'cave';
 let composer;
 let lastTime = performance.now();
 let isRegularVision = false;
@@ -69,6 +70,9 @@ function buildEnvironment(scene) {
         echoTargets.forEach(t => {
             if (t.userData && t.userData.echoMaterial) t.material = t.userData.echoMaterial;
         });
+
+        // Sky sphere (shown only in lit mode)
+        citySkySphere = new CitySkySphere(scene);
 
         // Start ambient city audio (2 low, localized sources)
         const cityAudioSources = cityBuilder.getAudioSourceConfigs();
@@ -212,9 +216,17 @@ function init() {
             }
 
             // Sprint C: toggle scene background and fog
-            scene.background.setHex(isRegularVision ? SCENE_BG_LIT : SCENE_BG_DARK);
-            scene.fog.color.setHex(isRegularVision ? SCENE_BG_LIT : SCENE_BG_DARK);
-            scene.fog.density = isRegularVision ? LIT_FOG_DENSITY : ECHO_FOG_DENSITY;
+            if (currentSceneType === 'city') {
+                // City: transparent bg in lit mode so sky sphere shows; dark in echo
+                scene.background = isRegularVision ? null : new THREE.Color(0x000208);
+                scene.fog.color.setHex(isRegularVision ? 0x081830 : 0x000208);
+                scene.fog.density = isRegularVision ? 0.008 : 0.015;
+                if (citySkySphere) isRegularVision ? citySkySphere.show() : citySkySphere.hide();
+            } else {
+                scene.background.setHex(isRegularVision ? SCENE_BG_LIT : SCENE_BG_DARK);
+                scene.fog.color.setHex(isRegularVision ? SCENE_BG_LIT : SCENE_BG_DARK);
+                scene.fog.density = isRegularVision ? LIT_FOG_DENSITY : ECHO_FOG_DENSITY;
+            }
 
             // Toggle echo/real materials — force DoubleSide for collision safety
             echoTargets.forEach(target => {
@@ -324,6 +336,7 @@ function render() {
     if (pingSystem) pingSystem.update(dt);
     if (echoAudioSystem) echoAudioSystem.updateListener();
     if (environmentAnimator) environmentAnimator.update(dt);
+    if (citySkySphere) citySkySphere.update(dt);
 
     const playerPos = new THREE.Vector3();
     camera.getWorldPosition(playerPos);
