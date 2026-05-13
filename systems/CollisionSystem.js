@@ -19,10 +19,15 @@ export class CollisionSystem {
         // --- tunables ---
         this.wallCheckDistance = 0.8;
         this.wallCheckHeight   = 0.9;
-        this.floorCheckHeight  = 1.5;    // Start floor ray 1.5m above dolly (not 10m — avoids hitting building roofs)
+        this.floorCheckHeight  = 2.5;    // 2.5m above dolly — covers max 1.2m terrain undulation
         this.ceilingClearance  = 1.8;
         this.playerHeight      = 1.6;
         this.floorSmoothSpeed  = 12.0;   // Snappier for city flat ground
+
+        // Absolute minimum Y the dolly can ever be placed at.
+        // Prevents falling through the floor during the first frames before geometry is loaded,
+        // or if a raycast misses entirely (e.g. in a corridor gap).
+        this.hardFloorMinY = -1.8;
 
         // 16 directions on XZ for denser wall coverage
         this._wallDirs = [];
@@ -37,16 +42,18 @@ export class CollisionSystem {
 
         // Hard AABB safety bounds for each room + corridor.
         // These prevent the player from ever escaping the cave.
-        // Each entry is { minX, maxX, minZ, maxZ } with 1m inset padding.
+        // Corridors use wider bounds so mid-transit the player is never rejected.
+        // Each entry is { minX, maxX, minZ, maxZ, minY (optional), label }
         this.roomBounds = [
-            { minX: -14, maxX: 14, minZ: -14, maxZ: 14 },       // Main chamber
-            { minX: -7,  maxX: 7,  minZ: -32, maxZ: -14 },      // Crystal grotto
-            { minX: -12, maxX: 12, minZ: 10,  maxZ: 34 },       // Underground lake
-            { minX: -27, maxX: -13, minZ: -5, maxZ: 5 },        // Bat alcove
-            { minX: 14,  maxX: 25, minZ: -10, maxZ: 10 },       // Tunnel
-            { minX: -3,  maxX: 3,  minZ: -19, maxZ: -13 },      // Corridor: Main↔Crystal
-            { minX: -18, maxX: -13, minZ: -2.5, maxZ: 2.5 },    // Corridor: Main↔Bats
-            { minX: 12,  maxX: 21, minZ: -3,  maxZ: 3 },        // Corridor: Main↔Tunnel
+            { minX: -15, maxX: 15,  minZ: -15, maxZ: 15,  label: 'main'    },
+            { minX: -8,  maxX: 8,   minZ: -33, maxZ: -13, label: 'crystal' },
+            { minX: -13, maxX: 13,  minZ: 9,   maxZ: 35,  label: 'lake'    },
+            { minX: -28, maxX: -12, minZ: -6,  maxZ: 6,   label: 'bats'    },
+            { minX: 13,  maxX: 27,  minZ: -11, maxZ: 11,  label: 'tunnel'  },
+            // Corridors: wider so mid-transit the player isn't suddenly outside all bounds
+            { minX: -4,  maxX: 4,   minZ: -20, maxZ: -13, label: 'corridor_crystal' },
+            { minX: -19, maxX: -12, minZ: -4,  maxZ: 4,   label: 'corridor_bats'   },
+            { minX: 12,  maxX: 22,  minZ: -4,  maxZ: 4,   label: 'corridor_tunnel' },
         ];
     }
 
@@ -145,27 +152,32 @@ export class CollisionSystem {
         );
 
         this.raycaster.set(origin, this._down);
-        this.raycaster.far = this.floorCheckHeight + 2; // 3.5m total — can't accidentally hit rooftops
+        // Search far = floorCheckHeight + extra to catch the undulating lake shelf (~1.2m high)
+        this.raycaster.far = this.floorCheckHeight + 2.5;
         const hits = this.raycaster.intersectObjects(this.colliders, false);
 
         if (hits.length > 0) {
-            // Find the highest floor hit (ignore ceiling hits which would be far away)
+            // Find the HIGHEST floor hit below origin (the ground under the player, not a ceiling)
             let bestY = -Infinity;
             for (const h of hits) {
                 const hitY = h.point.y;
-                // Only consider hits below the ray origin (i.e. actual floor surfaces)
                 if (hitY < origin.y && hitY > bestY) {
                     bestY = hitY;
                 }
             }
             if (bestY > -Infinity) {
-                const targetY = bestY;
                 dolly.position.y = THREE.MathUtils.lerp(
                     dolly.position.y,
-                    targetY,
+                    bestY,
                     Math.min(1, this.floorSmoothSpeed * dt)
                 );
             }
+        }
+
+        // Hard floor safety net: if raycaster missed entirely, don't let player fall to infinity.
+        // The lake room has cy = -1.5, so the lowest valid floor is around y = -1.8.
+        if (dolly.position.y < this.hardFloorMinY) {
+            dolly.position.y = this.hardFloorMinY;
         }
 
         // --- Ceiling check ---
