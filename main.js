@@ -205,54 +205,53 @@ function init() {
     realWorldLights.visible = false;
     scene.add(realWorldLights);
 
-    window.addEventListener('keydown', (e) => {
-        if (e.key.toLowerCase() === 'l') {
-            isRegularVision = !isRegularVision;
-            realWorldLights.visible = isRegularVision;
+    // Shared vision toggle — called by keyboard (desktop) and thumbstick click (VR)
+    window._toggleRegularVision = () => {
+        isRegularVision = !isRegularVision;
+        realWorldLights.visible = isRegularVision;
 
-            if (bloomPass) {
-                bloomPass.threshold = isRegularVision ? LIT_BLOOM_THRESHOLD : ECHO_BLOOM_THRESHOLD;
-                bloomPass.strength = isRegularVision ? LIT_BLOOM_STRENGTH : ECHO_BLOOM_STRENGTH;
-            }
-
-            // Sprint C: toggle scene background and fog
-            if (currentSceneType === 'city') {
-                // City: transparent bg in lit mode so sky sphere shows; dark in echo
-                scene.background = isRegularVision ? null : new THREE.Color(0x000208);
-                scene.fog.color.setHex(isRegularVision ? 0x081830 : 0x000208);
-                scene.fog.density = isRegularVision ? 0.008 : 0.015;
-                if (citySkySphere) isRegularVision ? citySkySphere.show() : citySkySphere.hide();
-            } else {
-                scene.background.setHex(isRegularVision ? SCENE_BG_LIT : SCENE_BG_DARK);
-                scene.fog.color.setHex(isRegularVision ? SCENE_BG_LIT : SCENE_BG_DARK);
-                scene.fog.density = isRegularVision ? LIT_FOG_DENSITY : ECHO_FOG_DENSITY;
-            }
-
-            // Toggle echo/real materials — force DoubleSide for collision safety
-            echoTargets.forEach(target => {
-                if (target.userData) {
-                    target.material = isRegularVision ? target.userData.realMaterial : target.userData.echoMaterial;
-                    // Sprint A P0: ensure collision raycaster always works regardless of material
-                    if (target.material.side !== THREE.DoubleSide) {
-                        target.material.side = THREE.DoubleSide;
-                    }
-                }
-            });
-
-            // Toggle feature lights (city lamps or cave crystals/fungi)
-            const isVR = renderer.xr.isPresenting;
-            featureLights.forEach(light => {
-                if (isRegularVision) {
-                    if (light.userData._isCityLamp) {
-                        light.intensity = isVR ? 0.8 : 1.2; // Warm street lamp
-                    } else {
-                        light.intensity = (isVR && light.userData._isFungiLight) ? 0 : (light.userData._isCrystalLight ? 2.0 : 0.8);
-                    }
-                } else {
-                    light.intensity = 0;
-                }
-            });
+        if (bloomPass) {
+            bloomPass.threshold = isRegularVision ? LIT_BLOOM_THRESHOLD : ECHO_BLOOM_THRESHOLD;
+            bloomPass.strength = isRegularVision ? LIT_BLOOM_STRENGTH : ECHO_BLOOM_STRENGTH;
         }
+
+        if (currentSceneType === 'city') {
+            scene.background = isRegularVision ? null : new THREE.Color(0x000208);
+            scene.fog.color.setHex(isRegularVision ? 0x081830 : 0x000208);
+            scene.fog.density = isRegularVision ? 0.008 : 0.015;
+            if (citySkySphere) isRegularVision ? citySkySphere.show() : citySkySphere.hide();
+        } else {
+            scene.background.setHex(isRegularVision ? SCENE_BG_LIT : SCENE_BG_DARK);
+            scene.fog.color.setHex(isRegularVision ? SCENE_BG_LIT : SCENE_BG_DARK);
+            scene.fog.density = isRegularVision ? LIT_FOG_DENSITY : ECHO_FOG_DENSITY;
+        }
+
+        echoTargets.forEach(target => {
+            if (target.userData) {
+                target.material = isRegularVision ? target.userData.realMaterial : target.userData.echoMaterial;
+                if (target.material.side !== THREE.DoubleSide) {
+                    target.material.side = THREE.DoubleSide;
+                }
+            }
+        });
+
+        const isVR = renderer.xr.isPresenting;
+        featureLights.forEach(light => {
+            if (isRegularVision) {
+                if (light.userData._isCityLamp) {
+                    light.intensity = isVR ? 0.8 : 1.2;
+                } else {
+                    light.intensity = (isVR && light.userData._isFungiLight) ? 0 : (light.userData._isCrystalLight ? 2.0 : 0.8);
+                }
+            } else {
+                light.intensity = 0;
+            }
+        });
+    };
+
+    // Desktop: L key
+    window.addEventListener('keydown', (e) => {
+        if (e.key.toLowerCase() === 'l') window._toggleRegularVision();
     });
     // -----------------------------------------
 
@@ -285,33 +284,78 @@ function init() {
         echoAudioSystem.startAmbientSources(audioSources);
     }
 
-    // Sprint B: Onboarding text — head-locked to camera dolly
+    // Sprint B: Onboarding text — head-locked, sits in the upper-centre FOV
     const canvas = document.createElement('canvas');
-    canvas.width = 1024;
-    canvas.height = 256;
+    canvas.width  = 1024;
+    canvas.height = 320;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = 'rgba(0, 0, 0, 0)';
-    ctx.fillRect(0, 0, 1024, 256);
-    ctx.font = '60px sans-serif';
-    ctx.fillStyle = 'rgba(0, 255, 255, 0.8)';
+
+    // Transparent background
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // ── Title line: "It is pitch black." ──────────────────
+    ctx.save();
+    ctx.font = 'bold 72px Inter, Arial, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('It is pitch black.', 512, 100);
-    ctx.fillText('Press Trigger or Spacebar to Ping.', 512, 180);
+    ctx.textBaseline = 'middle';
+    // Cyan glow
+    ctx.shadowColor = 'rgba(0, 230, 255, 0.9)';
+    ctx.shadowBlur  = 28;
+    ctx.fillStyle   = 'rgba(180, 245, 255, 0.95)';
+    ctx.fillText('It is pitch black.', 512, 110);
+    ctx.restore();
+
+    // ── Subtitle: instruction ──────────────────────────────
+    ctx.save();
+    ctx.font = '300 34px Inter, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(120, 210, 240, 0.72)';
+    ctx.fillText('Press Trigger or Spacebar to Ping', 512, 200);
+    ctx.restore();
 
     const tex = new THREE.CanvasTexture(canvas);
-    const planeGeo = new THREE.PlaneGeometry(4, 1);
+    // Wider plane (4.5×1.4) to keep text at comfortable reading size without clipping
+    const planeGeo = new THREE.PlaneGeometry(4.5, 1.4);
     const planeMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
     onboardingMesh = new THREE.Mesh(planeGeo, planeMat);
-    onboardingMesh.position.set(0, 0, -3);
+    // z=-3: comfortable reading distance; y=0.5: slightly above eye-line so it
+    // doesn't overlap the bottom HUD cluster
+    onboardingMesh.position.set(0, 0.5, -3);
     locomotion.getDolly().add(onboardingMesh);
 
-    // Desktop cooldown HUD — radial arc showing ping readiness
+    // Desktop cooldown HUD — bottom-right corner so it never overlaps centre HUD
     const cooldownHud = document.createElement('canvas');
     cooldownHud.id = 'cooldown-hud';
-    cooldownHud.width = 80;
+    cooldownHud.width  = 80;
     cooldownHud.height = 80;
-    cooldownHud.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);pointer-events:none;opacity:0.6;z-index:10;';
+    cooldownHud.style.cssText = [
+        'position:fixed',
+        'bottom:22px',
+        'right:28px',
+        'pointer-events:none',
+        'opacity:0.75',
+        'z-index:10'
+    ].join(';');
     document.body.appendChild(cooldownHud);
+
+    // ── In-VR debug panel ──────────────────────────────────────────────────
+    // A floating canvas plane parented to the dolly.
+    // It shows live button states for EVERY connected controller each frame.
+    // Remove or hide this once B-button mapping is confirmed.
+    const dbgCanvas = document.createElement('canvas');
+    dbgCanvas.width = 512; dbgCanvas.height = 256;
+    window._vrDebugCanvas = dbgCanvas;
+    window._vrDebugTex = new THREE.CanvasTexture(dbgCanvas);
+    const dbgMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.6, 0.8),
+        new THREE.MeshBasicMaterial({ map: window._vrDebugTex, transparent: true, depthWrite: false })
+    );
+    // Position: lower-left of FOV, close enough to read
+    dbgMesh.position.set(-1.0, -0.4, -2.2);
+    locomotion.getDolly().add(dbgMesh);
+    window._vrDebugMesh = dbgMesh;
+    // ──────────────────────────────────────────────────────────────────────
 
     window.addEventListener('resize', onWindowResize);
 }
@@ -337,6 +381,62 @@ function render() {
     if (echoAudioSystem) echoAudioSystem.updateListener();
     if (environmentAnimator) environmentAnimator.update(dt);
     if (citySkySphere) citySkySphere.update(dt);
+
+    // --- VR button polling: toggle Regular Vision ---
+    // Checks ALL inputSources (no handedness filter — some Quest firmware
+    // reports 'none' instead of 'right'). Ignores trigger (0) and grip (1).
+    // Fires _toggleRegularVision on the rising edge of ANY face button press.
+    if (renderer.xr.isPresenting) {
+        const session = renderer.xr.getSession();
+        if (session && session.inputSources) {
+
+            // ── In-VR debug panel update ──
+            if (window._vrDebugCanvas && window._vrDebugTex) {
+                const dc = window._vrDebugCanvas;
+                const dx = dc.getContext('2d');
+                dx.clearRect(0, 0, dc.width, dc.height);
+                dx.fillStyle = 'rgba(0,0,0,0.7)';
+                dx.fillRect(0, 0, dc.width, dc.height);
+                dx.font = 'bold 22px monospace';
+                dx.fillStyle = '#00ffcc';
+                dx.fillText('VR Button Debug', 16, 30);
+                let lineY = 58;
+                for (const src of session.inputSources) {
+                    if (!src.gamepad) continue;
+                    dx.fillStyle = '#aaffee';
+                    dx.font = '18px monospace';
+                    dx.fillText(`[${src.handedness}] ${src.gamepad.buttons.length} btns`, 16, lineY);
+                    lineY += 22;
+                    src.gamepad.buttons.forEach((b, i) => {
+                        if (b.pressed || b.value > 0.1) {
+                            dx.fillStyle = '#ffff00';
+                            dx.fillText(`  btn[${i}] pressed=${b.pressed} val=${b.value.toFixed(2)}`, 16, lineY);
+                            lineY += 20;
+                        }
+                    });
+                }
+                window._vrDebugTex.needsUpdate = true;
+            }
+            // ─────────────────────────────
+
+            for (const source of session.inputSources) {
+                if (!source.gamepad) continue;
+                const btns = source.gamepad.buttons;
+
+                // Scan ALL buttons except trigger (0) and grip (1)
+                let anyFacePressed = false;
+                for (let i = 2; i < btns.length; i++) {
+                    if (btns[i]?.pressed) { anyFacePressed = true; break; }
+                }
+
+                if (anyFacePressed && !source._visionBtnWasPressed) {
+                    window._toggleRegularVision();
+                }
+                source._visionBtnWasPressed = anyFacePressed;
+            }
+        }
+    }
+    // --------------------------------------------------------
 
     const playerPos = new THREE.Vector3();
     camera.getWorldPosition(playerPos);

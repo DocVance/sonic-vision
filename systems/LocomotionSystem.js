@@ -18,8 +18,8 @@ export class LocomotionSystem {
         }
 
         // State for VR movement
-        this.speed = 1.5; // m/s
-        this.turnAngle = Math.PI / 4; // 45 degrees
+        this.speed = 1.5;       // m/s walk speed
+        this.turnSpeed = 1.2;   // rad/s continuous turn speed
         this.isMoving = false;
 
         // Collision system reference (set after init)
@@ -108,11 +108,18 @@ export class LocomotionSystem {
                         if (Math.abs(x) > 0.2 || Math.abs(y) > 0.2) {
                             moved = true;
                             if (source.handedness === 'left') {
-                                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+                                // Use world quaternion so dolly rotation is included.
+                                // camera.quaternion is LOCAL (only headset tilt/pan relative
+                                // to the dolly). After continuous turning, the dolly has rotated
+                                // but the local quat hasn't changed — getWorldQuaternion() combines both.
+                                const worldQuat = new THREE.Quaternion();
+                                this.camera.getWorldQuaternion(worldQuat);
+
+                                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(worldQuat);
                                 forward.y = 0;
                                 forward.normalize();
 
-                                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
+                                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(worldQuat);
                                 right.y = 0;
                                 right.normalize();
 
@@ -128,15 +135,9 @@ export class LocomotionSystem {
                             }
 
                             if (source.handedness === 'right') {
-                                if (!this.turnCooldown) this.turnCooldown = 0;
-                                if (this.turnCooldown <= 0) {
-                                    if (x > 0.5) {
-                                        this.dolly.rotation.y -= this.turnAngle;
-                                        this.turnCooldown = 0.5;
-                                    } else if (x < -0.5) {
-                                        this.dolly.rotation.y += this.turnAngle;
-                                        this.turnCooldown = 0.5;
-                                    }
+                                // Continuous turn: rotate proportional to stick deflection × turnSpeed × dt
+                                if (Math.abs(x) > 0.2) {
+                                    this.dolly.rotation.y -= x * this.turnSpeed * dt;
                                 }
                             }
                         }
@@ -144,7 +145,6 @@ export class LocomotionSystem {
                 }
             }
         }
-        if (this.turnCooldown > 0) this.turnCooldown -= dt;
         this.isMoving = moved;
     }
 
@@ -174,8 +174,8 @@ export class LocomotionSystem {
             this.dolly.position.add(allowed);
         }
 
-        if (this.keys.q) { this.dolly.rotation.y += this.turnAngle * dt * 2; }
-        if (this.keys.e) { this.dolly.rotation.y -= this.turnAngle * dt * 2; }
+        if (this.keys.q) { this.dolly.rotation.y += this.turnSpeed * dt; }
+        if (this.keys.e) { this.dolly.rotation.y -= this.turnSpeed * dt; }
 
         // Subtle headbob when walking — increases embodiment
         const targetBob = moved ? 0.012 : 0;
