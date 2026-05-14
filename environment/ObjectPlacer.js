@@ -588,6 +588,12 @@ export class ObjectPlacer {
         this._eMushrooms(scene, mats);
         this._eChandelier(scene, mats);
         this._eArtifacts(scene, mats);
+
+        // Sprint D: Four-part cave improvement
+        this._eLakeIsland(scene, mats);        // Part 1
+        this._eGeodeWall(scene, mats);         // Part 2
+        this._eCeremonialArea(scene, mats);    // Part 3
+        this._eBatAlcoveDetail(scene, mats);   // Part 4
     }
 
     // helper: build mesh from geometries array (all toNonIndexed), add to scene
@@ -760,7 +766,235 @@ export class ObjectPlacer {
         this._lp(scene, geos, echo, mats.get('cave'));
     }
 
-    // --- Sprint B: Public getters ---
+    // ============================================================
+    //  PART 1 — Lake Room: Rock Island & Shoreline
+    // ============================================================
+    _eLakeIsland(scene, mats) {
+        const echo = this.echoShaderSystem.createMaterial({
+            colorTint: [0.2, 0.9, 0.6], ringSharpness: 0.45, decayMultiplier: 1.1
+        });
+        const geos = [];
+
+        // Central island — flat-topped mound
+        const island = new THREE.CylinderGeometry(3.5, 4.2, 0.9, 8, 1).toNonIndexed();
+        island.translate(0, -0.6, 22);
+        geos.push(island);
+        const top = new THREE.CylinderGeometry(1.8, 2.2, 0.55, 6, 1).toNonIndexed();
+        top.translate(0, 0.0, 22);
+        geos.push(top);
+
+        // Rock spire on the island
+        const spire = new THREE.ConeGeometry(0.55, 2.4, 6, 1).toNonIndexed();
+        spire.translate(0.5, 1.5, 22);
+        geos.push(spire);
+        const spireBase = new THREE.CylinderGeometry(0.62, 0.75, 0.4, 6, 1).toNonIndexed();
+        spireBase.translate(0.5, 0.25, 22);
+        geos.push(spireBase);
+
+        // Stepping stones: 5 flat discs from shore to island
+        [10.5, 12.0, 13.8, 15.5, 17.2].forEach((z, i) => {
+            const off = (i % 2 === 0 ? 0.6 : -0.5);
+            const stone = new THREE.CylinderGeometry(0.65 - i * 0.04, 0.7 - i * 0.04, 0.22, 6, 1).toNonIndexed();
+            stone.translate(off, -1.05, z);
+            geos.push(stone);
+        });
+
+        // Shoreline boulders around the lake perimeter
+        [
+            { x: -10, z: 12, r: 0.9 }, { x: 10, z: 12, r: 0.75 },
+            { x: -11, z: 22, r: 1.1 }, { x: 11, z: 22, r: 0.85 },
+            { x:  -9, z: 32, r: 0.7 }, { x:  9, z: 32, r: 1.0 },
+            { x:   0, z: 33, r: 0.8 },
+        ].forEach(({ x, z, r }) => {
+            const b = new THREE.DodecahedronGeometry(r, 0).toNonIndexed();
+            b.translate(x, -1.2 + r * 0.4, z);
+            geos.push(b);
+        });
+
+        this._lp(scene, geos, echo, mats.get('cave'), true);
+    }
+
+    // ============================================================
+    //  PART 2 — Crystal Grotto: Geode South Wall
+    // ============================================================
+    _eGeodeWall(scene, mats) {
+        const echo = this.echoShaderSystem.createMaterial({
+            colorTint: [0.3, 0.7, 1.0], ringSharpness: 0.04, decayMultiplier: 0.5
+        });
+        const geos = [];
+
+        const rows = [
+            { y: 0.8, count: 9, minL: 0.8,  maxL: 2.2 },
+            { y: 2.5, count: 7, minL: 1.2,  maxL: 3.0 },
+            { y: 4.5, count: 6, minL: 1.5,  maxL: 3.8 },
+            { y: 6.2, count: 5, minL: 0.6,  maxL: 1.5 },
+        ];
+        const pseudo = (i) => Math.abs(Math.sin(i * 127.1 + 311.7));
+
+        let idx = 0;
+        rows.forEach(({ y, count, minL, maxL }) => {
+            for (let i = 0; i < count; i++) {
+                const t  = pseudo(idx);
+                const t2 = pseudo(idx + 50);
+                const t3 = pseudo(idx + 100);
+                const length = minL + t * (maxL - minL);
+                const radius = 0.07 + t2 * 0.18;
+                const x = -5.5 + (i / Math.max(count - 1, 1)) * 11 + (t3 - 0.5) * 0.8;
+                const geo = new THREE.OctahedronGeometry(radius, 0).toNonIndexed();
+                geo.scale(1, length / (radius * 2), 1);
+                geo.rotateX(0.2 + t * 0.4);
+                geo.rotateZ((t2 - 0.5) * 0.5);
+                geo.translate(x, y + length * 0.3, -32.5);
+                geos.push(geo);
+                idx++;
+            }
+        });
+
+        // Backing slab fills wall gaps between spikes
+        const slab = new THREE.BoxGeometry(14, 8, 0.5).toNonIndexed();
+        slab.translate(0, 4, -32.8);
+        geos.push(slab);
+
+        this._lp(scene, geos, echo, mats.get('crystal'));
+
+        const wallLight = new THREE.PointLight(0x66aaff, 0, 18);
+        wallLight.position.set(0, 4, -31);
+        wallLight.userData._isCrystalLight = true;
+        scene.add(wallLight);
+        this.featureLights.push(wallLight);
+    }
+
+    // ============================================================
+    //  PART 3 — Main Chamber: Ceremonial Focal Point
+    // ============================================================
+    _eCeremonialArea(scene, mats) {
+        const echoStone = this.echoShaderSystem.createMaterial({
+            colorTint: [0.9, 0.6, 0.2], ringSharpness: 0.45, decayMultiplier: 1.1
+        });
+        const stoneGeos = [];
+
+        // Altar stone
+        const altar = new THREE.BoxGeometry(2.5, 0.55, 1.2).toNonIndexed();
+        altar.translate(-2, 1.0, -6);
+        stoneGeos.push(altar);
+        [[-1.0, -6], [-3.0, -6]].forEach(([ax, az]) => {
+            const leg = new THREE.BoxGeometry(0.45, 0.95, 0.45).toNonIndexed();
+            leg.translate(ax, 0.475, az);
+            stoneGeos.push(leg);
+        });
+        [[-1.6, -5.8], [-2.4, -6.2]].forEach(([bx, bz]) => {
+            const rim = new THREE.CylinderGeometry(0.18, 0.14, 0.15, 6, 1).toNonIndexed();
+            rim.translate(bx, 1.36, bz);
+            stoneGeos.push(rim);
+        });
+
+        // Fire pit ring
+        const ring = new THREE.TorusGeometry(0.9, 0.22, 4, 8).toNonIndexed();
+        ring.rotateX(Math.PI / 2);
+        ring.translate(5, 0.22, -2);
+        stoneGeos.push(ring);
+        [0, 1, 2, 3].forEach(i => {
+            const ang = (i / 4) * Math.PI * 2 + Math.PI * 0.25;
+            const seat = new THREE.BoxGeometry(0.9, 0.28, 0.5).toNonIndexed();
+            seat.rotateY(ang);
+            seat.translate(5 + Math.cos(ang) * 1.8, 0.14, -2 + Math.sin(ang) * 1.8);
+            stoneGeos.push(seat);
+        });
+        this._lp(scene, stoneGeos, echoStone, mats.get('cave'), true);
+
+        // Emissive fire disc in pit center
+        const echoFire = this.echoShaderSystem.createMaterial({
+            colorTint: [1.0, 0.4, 0.1], ringSharpness: 0.05, decayMultiplier: 0.3
+        });
+        const fireGeo = new THREE.CylinderGeometry(0.6, 0.65, 0.06, 8).toNonIndexed();
+        fireGeo.translate(5, 0.07, -2);
+        this._lp(scene, [fireGeo], echoFire, mats.get('mineral'));
+
+        // West wall painting panel
+        const echoPaint2 = this.echoShaderSystem.createMaterial({
+            colorTint: [0.8, 0.5, 0.2], ringSharpness: 0.6, decayMultiplier: 0.9
+        });
+        const mesh2 = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 2.5), echoPaint2);
+        mesh2.position.set(-13.5, 4.5, -3);
+        mesh2.rotation.y = Math.PI / 2;
+        mesh2.userData.echoMaterial = echoPaint2;
+        mesh2.userData.realMaterial = mats.get('painting');
+        scene.add(mesh2);
+        this.caveBuilder.echoTargets.push(mesh2);
+
+        // South wall painting panel
+        const echoPaint3 = this.echoShaderSystem.createMaterial({
+            colorTint: [0.8, 0.5, 0.2], ringSharpness: 0.6, decayMultiplier: 0.9
+        });
+        const mesh3 = new THREE.Mesh(new THREE.PlaneGeometry(5.0, 2.8), echoPaint3);
+        mesh3.position.set(-3, 4.0, 14.5);
+        mesh3.rotation.y = Math.PI;
+        mesh3.userData.echoMaterial = echoPaint3;
+        mesh3.userData.realMaterial = mats.get('painting');
+        scene.add(mesh3);
+        this.caveBuilder.echoTargets.push(mesh3);
+    }
+
+    // ============================================================
+    //  PART 4 — Bat Alcove: Ecological Detail
+    // ============================================================
+    _eBatAlcoveDetail(scene, mats) {
+        // Guano mounds on the floor
+        const echoGuano = this.echoShaderSystem.createMaterial({
+            colorTint: [0.7, 0.5, 0.3], ringSharpness: 0.2, decayMultiplier: 0.9
+        });
+        const guanoGeos = [];
+        [
+            { x: -21, z: -3, r: 0.55 }, { x: -23, z:  1, r: 0.80 },
+            { x: -20, z:  3, r: 0.45 }, { x: -24, z: -2, r: 0.70 },
+            { x: -22, z:  2, r: 0.60 }, { x: -19, z:  0, r: 0.38 },
+            { x: -25, z:  0, r: 0.50 }, { x: -23, z: -4, r: 0.42 },
+            { x: -20, z: -1, r: 0.65 }, { x: -22, z:  4, r: 0.35 },
+        ].forEach(({ x, z, r }) => {
+            const dome = new THREE.SphereGeometry(r, 6, 4, 0, Math.PI*2, 0, Math.PI*0.55).toNonIndexed();
+            dome.translate(x, r * 0.18, z);
+            guanoGeos.push(dome);
+        });
+        this._lp(scene, guanoGeos, echoGuano, mats.get('cave'));
+
+        // Wall drip formations on east wall
+        const echoDrip = this.echoShaderSystem.createMaterial({
+            colorTint: [0.6, 0.4, 0.2], ringSharpness: 0.55, decayMultiplier: 0.8
+        });
+        const dripGeos = [];
+        [-4, -2, 0, 2, 4].forEach((z, i) => {
+            const h = 2.0 + (i % 2) * 1.2;
+            const drip = new THREE.PlaneGeometry(0.18, h, 2, 6).toNonIndexed();
+            const pa = drip.attributes.position;
+            for (let vi = 0; vi < pa.count; vi++) {
+                pa.setX(vi, pa.getX(vi) + Math.sin(pa.getY(vi) * 3.5 + i) * 0.04);
+            }
+            pa.needsUpdate = true;
+            drip.rotateY(Math.PI / 2);
+            drip.translate(-15.8, 3.5 - h * 0.5, z);
+            dripGeos.push(drip);
+        });
+        this._lp(scene, dripGeos, echoDrip, mats.get('flowstone'));
+
+        // Dense stalactite roost cluster above bat colony
+        const echoRoost = this.echoShaderSystem.createMaterial({
+            colorTint: [0.8, 0.3, 0.2], ringSharpness: 0.15, decayMultiplier: 0.7
+        });
+        const roostGeos = [];
+        for (let i = 0; i < 18; i++) {
+            const pseudo = (n) => Math.abs(Math.sin(n * 91.3 + i * 47.7));
+            const h  = 1.0 + pseudo(0) * 2.8;
+            const r  = 0.06 + pseudo(1) * 0.18;
+            const bx = -22 + (pseudo(2) - 0.5) * 9;
+            const bz = (pseudo(3) - 0.5) * 7;
+            const g  = new THREE.ConeGeometry(r, h, 5, 1).toNonIndexed();
+            g.translate(bx, 13 - h * 0.5, bz);
+            roostGeos.push(g);
+        }
+        this._lp(scene, roostGeos, echoRoost, mats.get('stalactite'));
+    }
+
+
     getFeatureLights() {
         return this.featureLights;
     }
