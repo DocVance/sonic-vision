@@ -339,24 +339,6 @@ function init() {
     ].join(';');
     document.body.appendChild(cooldownHud);
 
-    // ── In-VR debug panel ──────────────────────────────────────────────────
-    // A floating canvas plane parented to the dolly.
-    // It shows live button states for EVERY connected controller each frame.
-    // Remove or hide this once B-button mapping is confirmed.
-    const dbgCanvas = document.createElement('canvas');
-    dbgCanvas.width = 512; dbgCanvas.height = 256;
-    window._vrDebugCanvas = dbgCanvas;
-    window._vrDebugTex = new THREE.CanvasTexture(dbgCanvas);
-    const dbgMesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.6, 0.8),
-        new THREE.MeshBasicMaterial({ map: window._vrDebugTex, transparent: true, depthWrite: false })
-    );
-    // Position: lower-left of FOV, close enough to read
-    dbgMesh.position.set(-1.0, -0.4, -2.2);
-    locomotion.getDolly().add(dbgMesh);
-    window._vrDebugMesh = dbgMesh;
-    // ──────────────────────────────────────────────────────────────────────
-
     window.addEventListener('resize', onWindowResize);
 }
 
@@ -389,41 +371,11 @@ function render() {
     if (renderer.xr.isPresenting) {
         const session = renderer.xr.getSession();
         if (session && session.inputSources) {
-
-            // ── In-VR debug panel update ──
-            if (window._vrDebugCanvas && window._vrDebugTex) {
-                const dc = window._vrDebugCanvas;
-                const dx = dc.getContext('2d');
-                dx.clearRect(0, 0, dc.width, dc.height);
-                dx.fillStyle = 'rgba(0,0,0,0.7)';
-                dx.fillRect(0, 0, dc.width, dc.height);
-                dx.font = 'bold 22px monospace';
-                dx.fillStyle = '#00ffcc';
-                dx.fillText('VR Button Debug', 16, 30);
-                let lineY = 58;
-                for (const src of session.inputSources) {
-                    if (!src.gamepad) continue;
-                    dx.fillStyle = '#aaffee';
-                    dx.font = '18px monospace';
-                    dx.fillText(`[${src.handedness}] ${src.gamepad.buttons.length} btns`, 16, lineY);
-                    lineY += 22;
-                    src.gamepad.buttons.forEach((b, i) => {
-                        if (b.pressed || b.value > 0.1) {
-                            dx.fillStyle = '#ffff00';
-                            dx.fillText(`  btn[${i}] pressed=${b.pressed} val=${b.value.toFixed(2)}`, 16, lineY);
-                            lineY += 20;
-                        }
-                    });
-                }
-                window._vrDebugTex.needsUpdate = true;
-            }
-            // ─────────────────────────────
-
             for (const source of session.inputSources) {
                 if (!source.gamepad) continue;
                 const btns = source.gamepad.buttons;
 
-                // Scan ALL buttons except trigger (0) and grip (1)
+                // Scan all buttons except trigger (0) and grip (1)
                 let anyFacePressed = false;
                 for (let i = 2; i < btns.length; i++) {
                     if (btns[i]?.pressed) { anyFacePressed = true; break; }
