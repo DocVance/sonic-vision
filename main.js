@@ -209,6 +209,27 @@ function init() {
     realWorldLights.visible = false;
     scene.add(realWorldLights);
 
+    // ── Shader pre-warm ───────────────────────────────────────────────────
+    // Three.js compiles GLSL shaders lazily on first use. Without pre-warming,
+    // the first vision toggle causes a synchronous compile spike that freezes
+    // the render loop for several frames, causing a hard visual jump in VR.
+    // Fix: briefly swap every target to its real material + enable lights,
+    // call renderer.compile() to force all variants to compile NOW (during
+    // loading, before VR starts), then restore the echo state.
+    {
+        echoTargets.forEach(t => {
+            if (t.userData?.realMaterial) t.material = t.userData.realMaterial;
+        });
+        realWorldLights.visible = true;
+        renderer.compile(scene, camera);
+        // Restore
+        echoTargets.forEach(t => {
+            if (t.userData?.echoMaterial) t.material = t.userData.echoMaterial;
+        });
+        realWorldLights.visible = false;
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     // Shared vision toggle — called by keyboard (desktop) and thumbstick click (VR)
     window._toggleRegularVision = () => {
         isRegularVision = !isRegularVision;
@@ -233,9 +254,7 @@ function init() {
         echoTargets.forEach(target => {
             if (target.userData) {
                 target.material = isRegularVision ? target.userData.realMaterial : target.userData.echoMaterial;
-                if (target.material.side !== THREE.DoubleSide) {
-                    target.material.side = THREE.DoubleSide;
-                }
+                // DoubleSide is baked into material definitions — no runtime patching needed
             }
         });
 
