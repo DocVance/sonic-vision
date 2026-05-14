@@ -6,29 +6,25 @@ export class CaveMaterials {
         this.materials = new Map();
 
         // --- Cave walls / general stone ---
-        this.materials.set('cave', new THREE.MeshPhysicalMaterial({
+        this.materials.set('cave', new THREE.MeshStandardMaterial({
             color: 0x4a4a4f,
-            roughness: 0.8,
-            metalness: 0.1,
-            clearcoat: 0.6,
-            clearcoatRoughness: 0.2,
+            roughness: 0.85,
+            metalness: 0.05,
             normalMap: this.textures.normalMap,
-            normalScale: new THREE.Vector2(2.0, 2.0),
+            normalScale: new THREE.Vector2(1.5, 1.5),
             roughnessMap: this.textures.roughnessMap,
             side: THREE.DoubleSide
         }));
 
-        // --- Stalactite / stalagmite mineral ---
-        this.materials.set('stalactite', new THREE.MeshPhysicalMaterial({
-            color: 0x22aadd,
-            roughness: 0.2,
-            metalness: 0.1,
-            transmission: 0.6,
-            thickness: 1.5,
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.1,
+        // Stalactite: emissive blue-white tint fakes translucency without transmission cost
+        this.materials.set('stalactite', new THREE.MeshStandardMaterial({
+            color: 0x4499bb,
+            roughness: 0.25,
+            metalness: 0.15,
+            emissive: 0x113344,
+            emissiveIntensity: 0.4,
             normalMap: this.textures.normalMap,
-            normalScale: new THREE.Vector2(0.5, 0.5)
+            normalScale: new THREE.Vector2(0.4, 0.4)
         }));
 
         // --- Archway obsidian ---
@@ -42,41 +38,27 @@ export class CaveMaterials {
             normalScale: new THREE.Vector2(0.2, 0.2)
         }));
 
-        // --- Crystal mineral (translucent + iridescent) ---
-        this.materials.set('crystal', new THREE.MeshPhysicalMaterial({
+        // Crystal: emissive glow + mild transparency — no transmission pass needed
+        this.materials.set('crystal', new THREE.MeshStandardMaterial({
             color: 0x88ccff,
             roughness: 0.05,
-            metalness: 0.0,
-            transmission: 0.85,
-            thickness: 2.0,
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.02,
-            ior: 2.4,
-            iridescence: 1.0,
-            iridescenceIOR: 1.5,
-            iridescenceThicknessRange: [100, 400],
-            emissive: 0x2266ff,
-            emissiveIntensity: 0.3,
+            metalness: 0.2,
+            emissive: 0x2255ff,
+            emissiveIntensity: 0.6,
             transparent: true,
-            opacity: 0.9,
+            opacity: 0.82,
             side: THREE.DoubleSide
         }));
 
-        // --- Underground water ---
-        this.materials.set('water', new THREE.MeshPhysicalMaterial({
+        // Water: emissive dark teal, no transmission pass
+        this.materials.set('water', new THREE.MeshStandardMaterial({
             color: 0x0a2a3a,
-            roughness: 0.0,
-            metalness: 0.1,
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.0,
-            transmission: 0.4,
-            thickness: 3.0,
-            normalMap: this._generateWaterNormalMap(),
-            normalScale: new THREE.Vector2(0.3, 0.3),
-            emissive: 0x001122,
-            emissiveIntensity: 0.2,
+            roughness: 0.05,
+            metalness: 0.3,
+            emissive: 0x001a2a,
+            emissiveIntensity: 0.35,
             transparent: true,
-            opacity: 0.85
+            opacity: 0.80
         }));
 
         // --- Bioluminescent fungi ---

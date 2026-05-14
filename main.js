@@ -189,17 +189,21 @@ function init() {
             realWorldLights.add(fl);
         });
     } else {
-        // Cave: coloured atmospheric lights per room
-        const hemiLight = new THREE.HemisphereLight(0xaaaaaa, 0x444444, 0.4);
+        // Cave: hemisphere base + 2 directional fills.
+        // DirectionalLights have fixed cost regardless of geometry count — safe for VR.
+        // PointLights scale with fragment count and were causing ASW failures on Quest.
+        const hemiLight = new THREE.HemisphereLight(0x8899bb, 0x443322, 0.55);
         realWorldLights.add(hemiLight);
-        const headlamp = new THREE.PointLight(0xffffff, 1.5, 30);
-        camera.add(headlamp);
-        const blueLight  = new THREE.PointLight(0x0044ff, 2.0, 40); blueLight.position.set(10,5,-15);  realWorldLights.add(blueLight);
-        const pinkLight  = new THREE.PointLight(0xff0088, 2.0, 40); pinkLight.position.set(-10,5,-5);  realWorldLights.add(pinkLight);
-        const crystalLight = new THREE.PointLight(0x4488ff, 3.0, 25); crystalLight.position.set(0,4,-25); realWorldLights.add(crystalLight);
-        const lakeLight  = new THREE.PointLight(0x00aaaa, 2.5, 30); lakeLight.position.set(0,1,22);    realWorldLights.add(lakeLight);
-        const batLight   = new THREE.PointLight(0xff6633, 1.5, 20); batLight.position.set(-22,6,0);    realWorldLights.add(batLight);
-        const tunnelLight= new THREE.PointLight(0x9966cc, 1.5, 25); tunnelLight.position.set(22,3,0);  realWorldLights.add(tunnelLight);
+
+        // Warm key light from upper-right (mimics a crack of daylight / torch)
+        const keyLight = new THREE.DirectionalLight(0xffd4a0, 1.2);
+        keyLight.position.set(8, 12, -5);
+        realWorldLights.add(keyLight);
+
+        // Cool fill from the opposite side — gives depth without wash-out
+        const fillLight = new THREE.DirectionalLight(0x4488cc, 0.5);
+        fillLight.position.set(-10, 6, 10);
+        realWorldLights.add(fillLight);
     }
 
     realWorldLights.visible = false;
